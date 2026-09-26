@@ -16,6 +16,7 @@ class ActivityTracker:
     def __init__(self):
         self._user32 = ctypes.windll.user32
         self._kernel32 = ctypes.windll.kernel32
+        self._kernel32.GetTickCount64.restype = ctypes.c_ulonglong
 
     def get_system_idle_seconds(self) -> float:
         """Returns elapsed seconds since last mouse or keyboard input."""
@@ -24,7 +25,8 @@ class ActivityTracker:
         if self._user32.GetLastInputInfo(ctypes.byref(lii)):
             # GetTickCount64 returns milliseconds since system boot
             current_tick = self._kernel32.GetTickCount64()
-            idle_ms = current_tick - lii.dwTime
+            # LASTINPUTINFO uses a wrapping 32-bit tick even on 64-bit Windows.
+            idle_ms = (current_tick - lii.dwTime) & 0xFFFFFFFF
             return max(0.0, idle_ms / 1000.0)
         return 0.0
 
