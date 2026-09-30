@@ -1,44 +1,77 @@
 # MoodPet
 
-A Windows desktop companion that turns small focus sessions into visible progress.
+A native Windows productivity companion with activity tracking, focus timers, persistent history, and an interactive Qt dashboard.
 
-## Run
+## Why this project exists
+
+Small focus sessions are easier to sustain when progress is visible. MoodPet connects foreground activity and deliberate focus sessions to daily charts, streaks, and a desktop companion that remains available from the system tray.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Win[Windows foreground and idle APIs] --> Track[Activity classification]
+    Track --> Focus[Focus and productivity state]
+    Timer[Manual focus timer] --> Focus
+    Focus --> DB[Local SQLite history]
+    DB --> UI[PySide6 dashboard and charts]
+    Focus --> Pet[Desktop companion]
+    Config[JSON settings] --> Track
+```
+
+Activity monitoring, productivity state, persistence, and UI live in separate `app/` packages. Settings and history remain on the local machine.
+
+## Engineering Highlights
+
+- Durable daily activity and session records drive streaks, XP, achievements, and history across restarts.
+- Focus timers support pause/resume and partial-session recording; automatic sessions are suppressed during manual focus and breaks to avoid double counting.
+- Idle tracking handles Windows tick-counter wraparound, with regression coverage.
+- Charts offer 7/30-day activity views, a 12-week calendar, hover details, and CSV export.
+- Monitoring reads foreground app names and window titles for classification; stored records contain aggregate durations and sessions, not titles or keystrokes.
+
+## Tech Stack
+
+**Desktop:** Python 3.10+, PySide6. **Persistence:** SQLite and JSON. **Platform:** Windows APIs. **Validation:** Python `unittest`, including storage, timer, tracking, chart, and dashboard tests.
+
+## How It Works
+
+Click the pet or tray icon to open the dashboard. Activity matching your rules is classified as productive or distracted; idle time is tracked separately. A streak day requires **15 productive minutes or one completed focus session**. Manual focus timers measure session time independently of app classifications.
+
+Settings are stored at `%USERPROFILE%\.moodpet\config.json`; history is at `%USERPROFILE%\.moodpet\moodpet.db`. Timers are saved as partial on a normal exit and are not resumed after restarting. A forced termination may lose the active unfinished session.
+
+## Setup
 
 Requires Windows 10/11 and Python 3.10 or newer.
 
 ```powershell
-python -m pip install -r requirements.txt
-python main.py
+git clone https://github.com/yashwant938/MoodPet.git
+cd MoodPet
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe main.py
 ```
 
-Click the floating pet or tray icon to open your dashboard. Drag the pet to move it. Right-click for preferences, hiding the companion, or quitting. Closing the dashboard leaves the companion running; use **Exit MoodPet** to quit.
+Drag the pet to reposition it. Right-click for preferences or **Exit MoodPet**. Closing the dashboard leaves the companion running.
 
-## Your dashboard
+## Example
 
-- **Overview:** live activity charts for 7 or 30 days, a 12-week activity calendar, daily goal, streaks, focus balance, and tiny daily wins. Hover chart bars and calendar cells for exact details.
-- **Focus room:** preset or custom 1–180 minute sessions, pause/resume, and 5/10 minute breaks. Ending a session early saves it as partial. Timers pause after a long gap such as computer sleep.
-- **Session history:** your most recent 100 sessions, lifetime stats, achievement collection, and a 90-day CSV activity export.
-- **Companion growth:** 1 XP for each productive minute and 25 XP for each completed session; every 250 XP gains a level. Progress is calculated from saved history.
+Open the dashboard, start a 25-minute focus session, pause and resume as needed, and complete it. The session appears in history and contributes to the day's streak. Reopen MoodPet to inspect the saved record. The session timer does not reclassify unrelated foreground activity as productive.
 
-## How tracking works
+## Engineering Challenges
 
-Activity charts count time in apps/window titles matching your rules. Idle time is tracked separately; neutral activity is omitted. Focus balance is productive time divided by productive plus distracted time. Focus timers measure elapsed session time and do not turn unrelated app activity into productive time.
+Time-based state must remain consistent through pauses, sleep gaps, midnight boundaries, and restarts. Tests exercise these transitions and persistence rules. Activity classification depends on editable app/title rules, so it is a useful personal signal rather than a measure of work quality.
 
-A streak day requires **15 productive minutes or one completed focus session**. Your streak remains available the next day so you have time to continue it. A missed full day breaks the current streak; the personal best remains. A daily goal is independent of the streak rule.
-
-Automatic productive blocks of at least five minutes are saved once when the block ends; a block completes when it reaches your configured milestone. Switching to neutral, distracted, or idle activity ends the block. During focus timers and breaks, automatic session recording is suppressed to prevent duplicate sessions. Productive activity still counts normally. Manual session time excludes pauses. Completed sessions are assigned to their finish date; daily activity is counted as it happens.
-
-## Saved locally
-
-Settings live in `%USERPROFILE%\.moodpet\config.json`; history lives in `%USERPROFILE%\.moodpet\moodpet.db`. Existing databases are upgraded in place. Streaks, XP, achievements, goals, and history survive restarting the app. Timers are not resumed after quitting; a running focus session is saved as partial on a normal exit. A forced process termination may lose the current unfinished session, while previously saved activity remains.
-
-The app reads foreground app names/window titles to classify activity and checks the time since your last input. It stores aggregate durations and session records locally, not window titles or keystrokes. Preferences lets you edit app rules and thresholds, choose quiet hours, and configure startup. Resetting today's statistics also deletes today's sessions, which may change your streak and XP.
-
-## Verify
+Run the regression suite and an optional dashboard preview with disposable fixture data:
 
 ```powershell
-python -m unittest discover -s tests -v
-python scratch/render_dashboard.py
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe scratch/render_dashboard.py
 ```
 
-The preview script uses disposable fixture data and saves screenshots to `scratch/`; it never opens your real history.
+## Future Improvements
+
+- Add packaged Windows releases and automated Windows CI.
+- Improve recovery of unfinished sessions after unexpected termination.
+- Add configurable retention and richer import/export options.
+
+See the [usage and data guide](docs/USAGE.md) for exact scoring, history, automatic-session, and reset behavior.
