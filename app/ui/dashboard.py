@@ -9,11 +9,12 @@ from PySide6.QtWidgets import (
     QButtonGroup, QComboBox, QDialog, QFileDialog, QFrame, QGridLayout,
     QHBoxLayout, QHeaderView, QLabel, QMessageBox, QProgressBar, QPushButton,
     QScrollArea, QSpinBox, QStackedWidget, QTableWidget, QTableWidgetItem,
-    QVBoxLayout, QWidget,
+    QLineEdit, QVBoxLayout, QWidget,
 )
 
 from app.ui.charts import ActivityChart, ActivityHeatmap, GoalRing
 from app.ui.character import HumanCharacterWidget
+from app.ui.journey import JourneyPanel
 from app.character.emotions import EmotionalPose
 
 
@@ -119,6 +120,7 @@ class Dashboard(QDialog):
     pause_requested = Signal()
     stop_requested = Signal()
     settings_requested = Signal()
+    activity_requested = Signal()
 
     def __init__(self, db, settings, session_manager, parent=None):
         super().__init__(parent)
@@ -157,9 +159,9 @@ class Dashboard(QDialog):
         side.addSpacing(32)
         self.nav_group = QButtonGroup(self)
         self.nav_buttons = []
-        for index, text in enumerate(("Overview", "Focus room", "Session history")):
+        for index, text in enumerate(("Overview", "Focus room", "Session history", "Focus journey")):
             button = QPushButton(text)
-            button.setIcon(navigation_icon(("overview", "focus", "history")[index]))
+            button.setIcon(navigation_icon(("overview", "focus", "history", "overview")[index]))
             button.setIconSize(QSize(18, 18))
             button.setCheckable(True)
             self.nav_group.addButton(button, index)
@@ -200,6 +202,9 @@ class Dashboard(QDialog):
         self._build_overview()
         self._build_focus()
         self._build_history()
+        journey_layout = self._page()
+        self.journey = JourneyPanel()
+        journey_layout.addWidget(self.journey)
 
     def _page(self):
         page = QWidget()
@@ -228,9 +233,17 @@ class Dashboard(QDialog):
         start.clicked.connect(lambda: self.navigate(1))
         top.addWidget(start, 0, Qt.AlignVCenter)
         layout.addLayout(top)
+        self.activity_label = label("", "muted")
+        self.activity_label.setTextFormat(Qt.PlainText)
+        self.activity_label.setWordWrap(True)
+        layout.addWidget(self.activity_label)
+        why = QPushButton("Why this activity? / Correct it")
+        why.clicked.connect(self.activity_requested.emit)
+        layout.addWidget(why)
 
         stats = QHBoxLayout()
         stats.setSpacing(14)
+        self.stat_titles = {}
         self.stat_values = {}
         self.stat_details = {}
         for key, title, detail in (
@@ -241,7 +254,8 @@ class Dashboard(QDialog):
         ):
             frame, box = card()
             box.setContentsMargins(17, 17, 17, 17)
-            box.addWidget(label(title, "eyebrow"))
+            self.stat_titles[key] = label(title, "eyebrow")
+            box.addWidget(self.stat_titles[key])
             self.stat_values[key] = label("—", "statValue")
             box.addWidget(self.stat_values[key])
             self.stat_details[key] = label(detail, "muted")
@@ -275,7 +289,8 @@ class Dashboard(QDialog):
         goal, goal_layout = card()
         goal.setMinimumWidth(225)
         goal_layout.addWidget(label("A little daily ambition", "sectionTitle"))
-        goal_layout.addWidget(label("Your productive-time goal", "muted"))
+        self.goal_description = label("Your productive-time goal", "muted")
+        goal_layout.addWidget(self.goal_description)
         self.goal_ring = GoalRing()
         self.goal_ring.setFixedHeight(158)
         goal_layout.addWidget(self.goal_ring)
@@ -337,6 +352,11 @@ class Dashboard(QDialog):
         layout.addWidget(label("Pick a duration, settle in, and let your companion keep time.", "muted"))
         frame, box = card()
         box.setContentsMargins(36, 30, 36, 32)
+        self.session_note = QLineEdit()
+        self.session_note.setMaxLength(120)
+        self.session_note.setPlaceholderText("Optional intention · e.g. fix one compiler bug")
+        self.session_note.setAccessibleName("Optional session intention")
+        box.addWidget(self.session_note)
         self.timer_status = label("READY WHEN YOU ARE", "eyebrow")
         self.timer_status.setAlignment(Qt.AlignCenter)
         box.addWidget(self.timer_status)
@@ -465,6 +485,11 @@ class Dashboard(QDialog):
         self.refresh_timer_state()
 
     def refresh(self):
+        self.journey.refresh(self.db)
+        self.mini_pet.companion_style = self.settings.get("companion_style", "orbit")
+        self.mini_pet.update()
+        parent = self.parent()
+        self.activity_label.setText(parent.activity_summary() if parent is not None and hasattr(parent, "activity_summary") else ("Automatic activity mode" if self.settings.get("tracking_mode") == "automatic" else "Timer-only mode · no app or input monitoring"))
         today = self.db.get_today_stats()
         streaks = self.db.get_streaks()
         lifetime = self.db.get_lifetime_stats()
@@ -472,7 +497,13 @@ class Dashboard(QDialog):
         productive = today["productive_seconds"]
         classified = productive + today["distracted_seconds"]
         self.date_label.setText(datetime.now().strftime("%A, %d %B").upper())
-        self.stat_values["productive"].setText(duration(productive))
+        manual = self.settings.get("tracking_mode", "manual") != "automatic"
+        progress = self.db.get_timer_seconds_today() if manual else productive
+        self.stat_titles["productive"].setText("TIMER TIME TODAY" if manual else "PRODUCTIVE TODAY")
+        self.stat_details["productive"].setText("Saved focus timer time, excluding pauses" if manual else "Time in your productive apps")
+        self.goal_description.setText("Your focus-timer goal" if manual else "Your productive-time goal")
+        self.stat_values["productive"].setText(duration(progress))
+        self.activity_chart.monitoring_enabled = not manual
         self.stat_values["streak"].setText(f"{streaks['current_streak']} days")
         self.stat_details["streak"].setText(f"Personal best: {streaks['best_streak']} days")
         self.stat_values["balance"].setText(f"{round(productive / classified * 100)}%" if classified else "—")
@@ -486,13 +517,16 @@ class Dashboard(QDialog):
             self.insight_label.setText(f"Your strongest day: {best_day} · {duration(best['productive_seconds'])} productive. Keep finding your rhythm.")
         else:
             self.insight_label.setText("Your story starts here. Use a productive app and your activity will appear automatically.")
+        if manual:
+            self.chart_summary.setText(f"Tracked app activity · automatic monitoring is off")
+            self.insight_label.setText("Timer sessions grow your constellation. Enable automatic tracking in Preferences only if you want app-activity charts.")
         target = self.goal_input.value() * 60
-        self.goal_ring.set_progress(productive, target)
-        self.goal_summary.setText(f"{duration(productive)} of {duration(target)}" + (" · Goal reached!" if productive >= target else ""))
+        self.goal_ring.set_progress(progress, target)
+        self.goal_summary.setText(f"{duration(progress)} of {duration(target)}" + (" · Goal reached!" if progress >= target else ""))
         self.heatmap.set_data(self.db.get_daily_history(84))
         self.streak_detail.setText(f"{streaks['active_days']} qualifying days, all time · Best streak: {streaks['best_streak']} days")
         for widget, done, text in zip(self.quest_labels,
-                (productive >= 900, today["focus_sessions_count"] > 0, productive >= target),
+                (progress >= 900, today["focus_sessions_count"] > 0, progress >= target),
                 ("Find 15 minutes of focus", "Complete a focus session", "Reach your daily goal")):
             widget.setText(f"{'●' if done else '○'}  {text}")
             widget.setStyleSheet(f"color: {'#237A57' if done else '#728176'}; padding: 5px 0;")
@@ -547,6 +581,7 @@ class Dashboard(QDialog):
         for button in self.duration_buttons + self.break_buttons:
             button.setEnabled(not active)
         self.pause_button.setEnabled(active)
+        self.session_note.setEnabled(not active)
         self.pause_button.setText("Resume" if paused else "Pause")
         self.stop_button.setEnabled(active)
         self.mini_pet.set_pose(EmotionalPose.BREAK if session.is_break_active else EmotionalPose.FOCUSED if session.is_focus_active else EmotionalPose.HAPPY)

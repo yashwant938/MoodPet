@@ -31,6 +31,7 @@ class DashboardIntegrationTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.settings = SettingsManager(Path(self.temp.name) / "config.json")
         self.settings.set("animations_enabled", False)
+        self.settings.set("tracking_mode", "automatic")  # explicit opt-in fixture
         self.db = DatabaseManager(Path(self.temp.name) / "history.db")
         self.tracker_patch = patch("app.ui.pet_window.ActivityTracker")
         tracker = self.tracker_patch.start().return_value

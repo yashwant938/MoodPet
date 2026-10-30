@@ -41,23 +41,9 @@ class CharacterPersonality:
             "Is that YouTube I see? 😑",
             "Bro... 👀"
         ],
-        EmotionalPose.ANGRY: [
-            "BRO... GET BACK TO WORK! 😭",
-            "Interesting. I thought we were becoming a software engineer. 💀",
-            "CLOSE IT NOW. 🛑",
-            "I'm striking until you open VS Code! 💥"
-        ],
-        EmotionalPose.SAD: [
-            "Where did you go? 🥺",
-            "Are you still alive? 😭",
-            "I'm getting lonely here...",
-            "Don't leave me hanging... 😭"
-        ],
-        EmotionalPose.CRYING: [
-            "You abandoned me! 😭😭😭",
-            "My heart is breaking... 😭",
-            "Close YouTube please! 😭"
-        ],
+        EmotionalPose.ANGRY: ["Ready for one small next step?", "Your pace, your choice."],
+        EmotionalPose.SAD: ["I'll be here when you are ready.", "Take the time you need."],
+        EmotionalPose.CRYING: ["A pause is part of the journey.", "A fresh start is always an option."],
         EmotionalPose.SLEEPY: [
             "Wake me when you're ready 😴",
             "Z z z ... 💤",
@@ -99,6 +85,14 @@ class CharacterPersonality:
     }
 
     @classmethod
-    def get_speech(cls, pose: EmotionalPose) -> str:
+    def get_speech(cls, pose: EmotionalPose, tone="gentle") -> str:
+        if tone == "quiet":
+            return ""
+        if tone != "playful":
+            if pose in (EmotionalPose.EXCITED, EmotionalPose.CELEBRATION):
+                return "One small win, saved. Nice work showing up."
+            if pose == EmotionalPose.BREAK:
+                return "Enjoy your break. You can come back when you are ready."
+            return random.choice(["Ready when you are.", "A small next step is enough.", "You can pause whenever you need."])
         lines = cls.DIALOGUE.get(pose, ["Let's get back to work!"])
         return random.choice(lines)

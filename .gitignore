@@ -6,3 +6,8 @@ venv/
 *.db-*
 scratch/*
 !scratch/render_dashboard.py
+
+.build-tools/
+build/
+dist/
+*.spec

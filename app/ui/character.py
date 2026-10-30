@@ -14,6 +14,8 @@ class HumanCharacterWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.observe_activity = False
+        self.companion_style = "orbit"
         self.pose = EmotionalPose.IDLE
         self.eye_tracker = EyeTracker(lerp_speed=0.15)
         self.anim_mgr = AnimationManager()
@@ -61,7 +63,11 @@ class HumanCharacterWidget(QWidget):
 
         # Update eye gaze + typing movement
         pet_global_pos = self.mapToGlobal(QPointF(self.width() / 2.0, self.height() / 2.0))
-        self.eye_tracker.update(pet_global_pos, is_typing=self.is_typing, dt=dt)
+        if self.observe_activity:
+            self.eye_tracker.update(pet_global_pos, is_typing=self.is_typing, dt=dt)
+        else:
+            self.eye_tracker.current_gaze = QPointF(0, 0)
+            self.eye_tracker.target_gaze = QPointF(0, 0)
 
         # Handle Blinking
         self.blink_timer += dt
@@ -125,8 +131,8 @@ class HumanCharacterWidget(QWidget):
         
         grad_body = QRadialGradient(0, -10, 45)
         grad_body.setColorAt(0.0, QColor("#FFFFFF"))
-        grad_body.setColorAt(0.7, QColor("#F0F4F8"))
-        grad_body.setColorAt(1.0, QColor("#D9E1E8"))
+        grad_body.setColorAt(0.7, QColor("#E9DEFF" if self.companion_style == "starlight" else "#F0F4F8"))
+        grad_body.setColorAt(1.0, QColor("#B9A6DD" if self.companion_style == "starlight" else "#D9E1E8"))
 
         painter.setPen(QPen(QColor(0, 0, 0, 25), 2.0))
         painter.setBrush(QBrush(grad_body))

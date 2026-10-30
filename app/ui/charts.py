@@ -210,7 +210,7 @@ class ActivityChart(QWidget):
             painter.drawText(message.adjusted(0, 4, 0, -30), Qt.AlignCenter, "Your story starts here")
             painter.setFont(_font(9))
             painter.setPen(MUTED)
-            painter.drawText(message.adjusted(0, 31, 0, -3), Qt.AlignCenter, "Activity will appear as you use your computer.")
+            painter.drawText(message.adjusted(0, 31, 0, -3), Qt.AlignCenter, "Activity will appear as you use your computer." if getattr(self, "monitoring_enabled", True) else "Automatic tracking is off. Timer progress is shown separately.")
 
     def mouseMoveEvent(self, event):
         index = next((i for i, region in enumerate(self._hit_regions)

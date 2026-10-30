@@ -2,11 +2,18 @@ import json
 import os
 import winreg
 from pathlib import Path
+from copy import deepcopy
 
 class SettingsManager:
     """Manages application settings stored in a JSON configuration file."""
 
     DEFAULT_SETTINGS = {
+        "classification_rules": {},
+        "tracking_mode": "manual",
+        "onboarding_complete": False,
+        "personality": "gentle",
+        "companion_style": "orbit",
+        "developer_events_enabled": False,
         "productive_apps": [
             "code.exe", "visualstudio.exe", "devenv.exe", "idea64.exe",
             "clion64.exe", "pycharm64.exe", "webstorm64.exe", "rider64.exe",
@@ -54,7 +61,7 @@ class SettingsManager:
         else:
             self.config_path = Path(config_path)
 
-        self.settings = dict(self.DEFAULT_SETTINGS)
+        self.settings = deepcopy(self.DEFAULT_SETTINGS)
         self.load()
 
     def load(self):
@@ -90,8 +97,8 @@ class SettingsManager:
         key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
         app_name = "MoodPet"
         python_exe = os.sys.executable
-        main_script = os.path.abspath("main.py")
-        cmd = f'"{python_exe}" "{main_script}"'
+        main_script = Path(__file__).resolve().parents[2] / "main.py"
+        cmd = f'"{python_exe}"' if getattr(os.sys, "frozen", False) else f'"{python_exe}" "{main_script}"'
 
         try:
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_ALL_ACCESS)

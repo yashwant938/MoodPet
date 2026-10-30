@@ -80,6 +80,8 @@ class DatabaseManager:
                         ), 0))
                     WHERE date IN (SELECT date FROM focus_sessions)
                 """)
+            if "note" not in {row["name"] for row in conn.execute("PRAGMA table_info(focus_sessions)")}:
+                conn.execute("ALTER TABLE focus_sessions ADD COLUMN note TEXT NOT NULL DEFAULT ''")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_focus_sessions_date ON focus_sessions(date)")
 
     @staticmethod
@@ -138,7 +140,7 @@ class DatabaseManager:
                 WHERE date = ?
             """, (*deltas, today_str))
 
-    def record_focus_session(self, duration_seconds, completed=True, start_time=None, end_time=None, source="manual"):
+    def record_focus_session(self, duration_seconds, completed=True, start_time=None, end_time=None, source="manual", note=""):
         """Record one session and its aggregate in a single transaction.
 
         Explicit timestamps can be datetime objects, ISO strings, or Unix
@@ -153,14 +155,16 @@ class DatabaseManager:
             raise ValueError("Session end must not precede its start")
         if not isinstance(source, str) or not source.strip() or len(source) > 64:
             raise ValueError("Session source must be a nonempty string of at most 64 characters")
+        if not isinstance(note, str) or len(note) > 120:
+            raise ValueError("Session notes must be text of at most 120 characters")
         session_date = ended.date().isoformat()
         with self._connection() as conn:
             conn.execute("INSERT OR IGNORE INTO daily_stats (date) VALUES (?)", (session_date,))
             cursor = conn.execute("""
-                INSERT INTO focus_sessions (date, start_time, end_time, duration_seconds, completed, source)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO focus_sessions (date, start_time, end_time, duration_seconds, completed, source, note)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (session_date, started.isoformat(sep=" ", timespec="seconds"),
-                  ended.isoformat(sep=" ", timespec="seconds"), duration, int(bool(completed)), source.strip()))
+                  ended.isoformat(sep=" ", timespec="seconds"), duration, int(bool(completed)), source.strip(), note.strip()))
             conn.execute("""
                 UPDATE daily_stats SET
                     focus_sessions_count = focus_sessions_count + ?,
@@ -239,3 +243,11 @@ class DatabaseManager:
                     idle_seconds = 0, focus_sessions_count = 0, longest_session_seconds = 0
                 WHERE date = ?
             """, (today_str,))
+
+    def get_journey_sessions(self):
+        with self._connection() as conn:
+            return [dict(row) for row in conn.execute("SELECT id, date, duration_seconds, note FROM focus_sessions WHERE completed = 1 ORDER BY end_time DESC, id DESC LIMIT 100")]
+
+    def get_timer_seconds_today(self):
+        with self._connection() as conn:
+            return conn.execute("SELECT COALESCE(SUM(duration_seconds), 0) FROM focus_sessions WHERE date = ? AND source = 'manual'", (date.today().isoformat(),)).fetchone()[0]
