@@ -2,11 +2,12 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QTabWidget, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QSpinBox, QDoubleSpinBox, QCheckBox, QListWidget,
-    QLineEdit, QGroupBox, QFormLayout, QTimeEdit, QMessageBox, QFrame
+    QComboBox, QLineEdit, QGroupBox, QFormLayout, QTimeEdit, QMessageBox, QFrame
 )
 from PySide6.QtCore import QTime
 from app.config.settings import SettingsManager
 from app.storage.database import DatabaseManager
+from app.ui.theme import DIALOG_STYLE
 from app.productivity.focus_tracker import FocusTracker
 
 class SettingsDialog(QDialog):
@@ -19,69 +20,9 @@ class SettingsDialog(QDialog):
         self.focus_tracker = focus_tracker
 
         self.setWindowTitle("MoodPet Preferences")
-        self.resize(640, 570)
-        self.setMinimumSize(590, 520)
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #1E1E2E;
-                color: #CDD6F4;
-                font-family: 'Segoe UI', Arial, sans-serif;
-            }
-            QTabWidget::pane {
-                border: 1px solid #313244;
-                background-color: #181825;
-                border-radius: 8px;
-            }
-            QTabBar::tab {
-                background-color: #181825;
-                color: #A6ADC8;
-                padding: 8px 16px;
-                border-top-left-radius: 6px;
-                border-top-right-radius: 6px;
-                margin-right: 4px;
-            }
-            QTabBar::tab:selected {
-                background-color: #313244;
-                color: #CBA6F7;
-                font-weight: bold;
-            }
-            QGroupBox {
-                border: 1px solid #313244;
-                border-radius: 6px;
-                margin-top: 10px;
-                font-weight: bold;
-                color: #CBA6F7;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-            QLabel {
-                color: #CDD6F4;
-            }
-            QLineEdit, QSpinBox, QDoubleSpinBox, QTimeEdit, QListWidget {
-                background-color: #313244;
-                color: #CDD6F4;
-                border: 1px solid #45475A;
-                border-radius: 4px;
-                padding: 4px;
-            }
-            QPushButton {
-                background-color: #89B4FA;
-                color: #11111B;
-                font-weight: bold;
-                border: none;
-                border-radius: 6px;
-                padding: 6px 14px;
-            }
-            QPushButton:hover {
-                background-color: #B4BEFE;
-            }
-            QCheckBox {
-                color: #CDD6F4;
-            }
-        """)
+        self.resize(760, 620)
+        self.setMinimumSize(640, 560)
+        self.setStyleSheet(DIALOG_STYLE)
 
         main_layout = QVBoxLayout(self)
 
@@ -93,17 +34,18 @@ class SettingsDialog(QDialog):
         self._build_rules_tab()
         self._build_thresholds_tab()
         self._build_stats_tab()
+        self._build_activity_tab()
 
         # Bottom Buttons
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
-        self.save_btn = QPushButton("Save & Apply")
+        self.save_btn = QPushButton("Save changes")
         self.save_btn.clicked.connect(self.save_and_apply)
         btn_layout.addWidget(self.save_btn)
 
         self.cancel_btn = QPushButton("Cancel")
-        self.cancel_btn.setStyleSheet("background-color: #45475A; color: #CDD6F4;")
+        self.cancel_btn.setStyleSheet("background-color: #FFFFFF; color: #526B5D;")
         self.cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(self.cancel_btn)
 
@@ -166,7 +108,7 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(quiet_box)
         layout.addStretch()
-        self.tabs.addTab(tab, "⚙️ General")
+        self.tabs.addTab(tab, "General")
 
     def _build_rules_tab(self):
         tab = QWidget()
@@ -214,7 +156,7 @@ class SettingsDialog(QDialog):
         dist_layout.addLayout(dist_input_layout)
         layout.addWidget(dist_box)
 
-        self.tabs.addTab(tab, "🎯 App Rules")
+        self.tabs.addTab(tab, "App rules")
 
     def _add_productive(self):
         txt = self.prod_input.text().strip().lower()
@@ -266,7 +208,7 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(box)
         layout.addStretch()
-        self.tabs.addTab(tab, "⏱️ Thresholds")
+        self.tabs.addTab(tab, "Thresholds")
 
     def _build_stats_tab(self):
         tab = QWidget()
@@ -304,7 +246,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(reset_btn)
 
         layout.addStretch()
-        self.tabs.addTab(tab, "📊 Dashboard")
+        self.tabs.addTab(tab, "History")
 
     def _reset_today_stats(self):
         reply = QMessageBox.question(self, "Confirm Reset", "Reset today's activity and delete today's session history? This can change your streak and XP. Earlier days are kept.", QMessageBox.Yes | QMessageBox.No)
@@ -319,8 +261,50 @@ class SettingsDialog(QDialog):
             QMessageBox.information(self, "Reset", "Today's statistics have been reset.")
             self.accept()
 
+    def _build_activity_tab(self):
+        tab = QWidget()
+        box = QVBoxLayout(tab)
+        form = QFormLayout()
+        self.tracking_mode = QComboBox()
+        self.tracking_mode.addItem("Timer only · no app/input monitoring", "manual")
+        self.tracking_mode.addItem("Automatic activity tracking", "automatic")
+        self.tracking_mode.setCurrentIndex(max(0, self.tracking_mode.findData(self.settings.get("tracking_mode", "manual"))))
+        form.addRow("Activity:", self.tracking_mode)
+        self.personality = QComboBox()
+        for value in ("gentle", "playful", "quiet"):
+            self.personality.addItem(value.title(), value)
+        self.personality.setCurrentIndex(max(0, self.personality.findData(self.settings.get("personality", "gentle"))))
+        form.addRow("Companion tone:", self.personality)
+        self.companion_style = QComboBox()
+        self.companion_style.addItem("Orbit · ivory", "orbit")
+        self.companion_style.addItem("Starlight · lavender", "starlight")
+        self.companion_style.setCurrentIndex(max(0, self.companion_style.findData(self.settings.get("companion_style", "orbit"))))
+        form.addRow("Appearance:", self.companion_style)
+        self.dev_events = QCheckBox("Allow local build/test event reactions")
+        self.dev_events.setChecked(self.settings.get("developer_events_enabled", False))
+        form.addRow(self.dev_events)
+        box.addLayout(form)
+        info = QLabel("Automatic mode reads app names, titles and idle time. Titles and keystrokes are never saved. Quiet tone silences all speech. Developer events contain only a fixed event name and timestamp; they do not change your progress.")
+        info.setWordWrap(True)
+        box.addWidget(info)
+        box.addWidget(QLabel("Your remembered keyword corrections (newer rules take priority):"))
+        self.saved_rules = QListWidget()
+        for keyword, state in self.settings.get("classification_rules", {}).items():
+            self.saved_rules.addItem(f"{keyword} → {state}")
+            self.saved_rules.item(self.saved_rules.count()-1).setData(Qt.UserRole, (keyword, state))
+        box.addWidget(self.saved_rules)
+        remove = QPushButton("Remove selected correction")
+        remove.clicked.connect(lambda: self.saved_rules.takeItem(self.saved_rules.currentRow()) if self.saved_rules.currentRow() >= 0 else None)
+        box.addWidget(remove)
+        self.tabs.addTab(tab, "Activity / tone")
+
     def save_and_apply(self):
         """Save form values to SettingsManager."""
+        self.settings.set("tracking_mode", self.tracking_mode.currentData())
+        self.settings.set("personality", self.personality.currentData())
+        self.settings.set("companion_style", self.companion_style.currentData())
+        self.settings.set("developer_events_enabled", self.dev_events.isChecked())
+        self.settings.set("classification_rules", dict(self.saved_rules.item(i).data(Qt.UserRole) for i in range(self.saved_rules.count())))
         self.settings.set("pet_scale", self.scale_spin.value())
         self.settings.set("auto_hide_message_sec", self.msg_delay_spin.value())
         self.settings.set("always_on_top", self.always_top_chk.isChecked())
@@ -328,7 +312,8 @@ class SettingsDialog(QDialog):
         
         # Windows startup registry integration
         new_startup = self.startup_chk.isChecked()
-        self.settings.set_start_with_windows(new_startup)
+        if new_startup != self.settings.get("start_with_windows", False):
+            self.settings.set_start_with_windows(new_startup)
 
         # Quiet hours
         self.settings.set("quiet_hours_enabled", self.quiet_chk.isChecked())

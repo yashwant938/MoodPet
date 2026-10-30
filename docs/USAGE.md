@@ -2,6 +2,10 @@
 
 A Windows desktop companion that turns small focus sessions into visible progress.
 
+## Choose your mode
+
+The first launch asks for a tracking choice before monitoring starts. Timer-only is the default and uses saved focus-timer minutes for the daily goal; automatic mode uses tracked productive time. App-activity charts always remain separate. See the [focus journey guide](FOCUS_JOURNEY.md) for corrections, quick actions, personalities, constellation stars and the Windows download workflow.
+
 ## Run
 
 Requires Windows 10/11 and Python 3.10 or newer.

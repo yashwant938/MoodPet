@@ -48,7 +48,7 @@ class ProductivityEngine:
             self.distraction_start_time = None
             return ProductivityState.PRODUCTIVE, {
                 "matched": process_name if is_productive_app else title,
-                "reason": "Matched productive rule"
+                "reason": f"Productive app rule: {process_name}" if is_productive_app else "Productive keyword: " + next(kw for kw in productive_keywords if kw in title)
             }
 
         # 3. Distraction check
@@ -68,7 +68,7 @@ class ProductivityEngine:
                 return ProductivityState.DISTRACTING, {
                     "matched": process_name if is_distracting_app else title,
                     "elapsed_sec": int(distraction_elapsed),
-                    "reason": "Grace period expired"
+                    "reason": "Distraction grace expired · " + (f"app rule: {process_name}" if is_distracting_app else "keyword: " + next(kw for kw in distracting_keywords if kw in title))
                 }
             else:
                 remaining_grace = int(grace_period - distraction_elapsed)

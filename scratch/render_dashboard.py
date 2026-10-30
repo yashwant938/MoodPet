@@ -24,6 +24,8 @@ def main():
     output = Path(__file__).resolve().parent
     with tempfile.TemporaryDirectory(dir=output) as temp:
         settings = SettingsManager(Path(temp) / "config.json")
+        settings.set("animations_enabled", False)
+        settings.set("tracking_mode", "automatic")
         db = DatabaseManager(Path(temp) / "preview.db")
         for offset in range(84):
             day = date.today() - timedelta(days=offset)
@@ -33,12 +35,12 @@ def main():
                              (day.isoformat(), productive, offset * 173 % 1700, 700))
         for offset in range(7):
             finish = datetime.now() - timedelta(days=offset, hours=1)
-            db.record_focus_session(1500, completed=offset != 3, end_time=finish)
+            db.record_focus_session(1500, completed=offset != 3, end_time=finish, note="One small step")
         manager = FocusSessionManager()
         dashboard = Dashboard(db, settings, manager)
         dashboard.show()
         app.processEvents()
-        for index, name in enumerate(("overview", "focus", "history")):
+        for index, name in enumerate(("overview", "focus", "history", "journey")):
             dashboard.navigate(index)
             app.processEvents()
             dashboard.grab().save(str(output / f"dashboard-{name}.png"))
@@ -46,6 +48,20 @@ def main():
         dashboard.navigate(0)
         app.processEvents()
         dashboard.grab().save(str(output / "dashboard-small.png"))
+        from app.ui.welcome import WelcomeDialog
+        from app.ui.settings_dialog import SettingsDialog
+        from app.productivity.focus_tracker import FocusTracker
+        welcome = WelcomeDialog(settings)
+        welcome.show()
+        app.processEvents()
+        welcome.grab().save(str(output / "welcome.png"))
+        welcome.close()
+        preferences = SettingsDialog(settings, db, FocusTracker(db))
+        preferences.tabs.setCurrentIndex(4)
+        preferences.show()
+        app.processEvents()
+        preferences.grab().save(str(output / "preferences.png"))
+        preferences.close()
         dashboard.hide()
         empty_db = DatabaseManager(Path(temp) / "empty.db")
         empty_dashboard = Dashboard(empty_db, settings, FocusSessionManager())
