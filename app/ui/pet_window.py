@@ -37,6 +37,8 @@ class PetWindow(QWidget):
         self.current_window = {}
         self.current_activity = (ProductivityState.NEUTRAL, {"reason": "Ready when you are"})
         self.session_note = ""
+        self.session_task_id = None
+        self._last_checkpoint = 0.0
         self._next_developer_message = 0
         self.focus_tracker = FocusTracker(self.db, target_milestone_sec=self.settings.get("focus_milestone_target_sec", 1800))
         self.emotion_engine = EmotionalStateEngine()
@@ -166,11 +168,12 @@ class PetWindow(QWidget):
         if session_info["focus_finished"]:
             self._celebration_until = now + 8
             self._say("Session complete! One more small win, saved. Time to stretch?", extra_seconds=3)
-            self.db.record_focus_session(
-                duration_seconds=int(self.focus_session_mgr.focus_total_sec), completed=True,
-                start_time=self.focus_session_mgr.focus_started_at, source="manual", note=self.session_note,
-            )
+            self._checkpoint_focus()
+            self.db.finish_checkpoint(completed=True)
             self.activity_policy.clear_corrections()
+        elif self.focus_session_mgr.is_focus_active and now - self._last_checkpoint >= 5:
+            self._checkpoint_focus()
+            self._last_checkpoint = now
         if session_info["break_finished"]:
             self.activity_policy.clear_corrections()
             self._say("Welcome back. A fresh little focus session is waiting for you.")
@@ -268,7 +271,10 @@ class PetWindow(QWidget):
             return
         self.focus_tracker.finish_current_session()
         self.session_note = self.dashboard.session_note.text().strip() if self.dashboard is not None else ""
+        self.session_task_id = self.dashboard.task_picker.currentData() if self.dashboard is not None and self.dashboard.isVisible() else None
         self.focus_session_mgr.start_focus(duration_sec)
+        self.db.save_checkpoint(self.focus_session_mgr.focus_started_at, 0, duration_sec, False, self.session_note, self.session_task_id, new=True)
+        self._last_checkpoint = time.monotonic()
         self._last_tick = time.monotonic()
         self.character_widget.set_pose(EmotionalPose.FOCUSED)
         mins = int(duration_sec // 60)
@@ -287,20 +293,25 @@ class PetWindow(QWidget):
 
     def _toggle_session_pause(self):
         self.focus_session_mgr.toggle_pause()
+        if self.focus_session_mgr.is_focus_active:
+            self._checkpoint_focus()
         self._last_tick = time.monotonic()
         self._refresh_dashboard()
 
     def _stop_session(self):
         if self.focus_session_mgr.is_focus_active:
-            elapsed = int(self.focus_session_mgr.focus_elapsed_sec)
-            if elapsed > 0:
-                self.db.record_focus_session(elapsed, completed=False,
-                    start_time=self.focus_session_mgr.focus_started_at, source="manual", note=self.session_note)
+            self._checkpoint_focus()
+            self.db.finish_checkpoint(completed=False)
         self.focus_session_mgr.stop_all()
         self.activity_policy.clear_corrections()
         self.character_widget.set_focus_mode(False)
         self.character_widget.set_break_mode(False)
         self._refresh_dashboard()
+
+    def _checkpoint_focus(self):
+        session = self.focus_session_mgr
+        self.db.save_checkpoint(session.focus_started_at, session.focus_elapsed_sec, session.focus_total_sec,
+                                session.is_paused, self.session_note, self.session_task_id)
 
     def _refresh_dashboard(self):
         if self.dashboard is not None and self.dashboard.isVisible():

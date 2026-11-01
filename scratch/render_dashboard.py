@@ -36,11 +36,13 @@ def main():
         for offset in range(7):
             finish = datetime.now() - timedelta(days=offset, hours=1)
             db.record_focus_session(1500, completed=offset != 3, end_time=finish, note="One small step")
+        db.create_task("Review a linker patch", "Systems learning", 3600)
+        db.create_task("Read one chapter", "Personal", 1800)
         manager = FocusSessionManager()
         dashboard = Dashboard(db, settings, manager)
         dashboard.show()
         app.processEvents()
-        for index, name in enumerate(("overview", "focus", "history", "journey")):
+        for index, name in enumerate(("overview", "focus", "history", "journey", "tasks")):
             dashboard.navigate(index)
             app.processEvents()
             dashboard.grab().save(str(output / f"dashboard-{name}.png"))

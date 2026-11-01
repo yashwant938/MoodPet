@@ -37,6 +37,8 @@ Try `python main.py --demo` to explore fictional temporary history with no activ
 - Opt-in local build/test events react to fixed event names without reading code, running commands, or changing XP.
 - Durable daily activity and session records drive streaks, XP, achievements, and history across restarts.
 - Focus timers support pause/resume and partial-session recording; automatic sessions are suppressed during manual focus and breaks to avoid double counting.
+- Organize optional focus tasks by project, add time estimates, and see completed and partial timer time per task.
+- An interrupted timer offers to save its last checkpoint as a partial session or discard it; no time is credited while the app is closed.
 - Idle tracking handles Windows tick-counter wraparound, with regression coverage.
 - Charts offer 7/30-day activity views, a 12-week calendar, hover details, and CSV export.
 - Monitoring reads foreground app names and window titles for classification; stored records contain aggregate durations and sessions, not titles or keystrokes.
@@ -49,7 +51,7 @@ Try `python main.py --demo` to explore fictional temporary history with no activ
 
 Click the pet or tray icon to open the dashboard. In automatic mode, activity matching your rules is classified as productive or distracted; idle time is tracked separately. A streak day requires **15 productive minutes or one completed focus session**. Manual focus timers measure session time independently of app classifications. In timer-only mode the daily goal uses saved manual timer time; automatic-mode goals use tracked productive time. The activity charts always show recorded app activity, so these measures are never combined.
 
-Settings are stored at `%USERPROFILE%\.moodpet\config.json`; history is at `%USERPROFILE%\.moodpet\moodpet.db`. Timers are saved as partial on a normal exit and are not resumed after restarting. A forced termination may lose the active unfinished session.
+Settings are stored at `%USERPROFILE%\.moodpet\config.json`; history is at `%USERPROFILE%\.moodpet\moodpet.db`. Timers are saved as partial on a normal exit. After an unexpected termination you can save the last checkpoint as partial or discard it; timers do not automatically resume.
 
 ## Windows download and setup
 
@@ -87,9 +89,11 @@ Run the regression suite and an optional dashboard preview with disposable fixtu
 
 ## Future Improvements
 
-- Improve recovery of unfinished sessions after unexpected termination.
+- Add pet accessories and progression, weekly insights, and configurable break reminders.
 - Add configurable retention and richer import/export options.
 
 See the [usage and data guide](docs/USAGE.md) for exact scoring, history, automatic-session, and reset behavior.
 
 See [the new experience guide](docs/FOCUS_JOURNEY.md) for corrections, tone, developer events, packaging and data behavior.
+
+See [tasks and recovery](docs/TASKS_AND_RECOVERY.md) for migration details, recovery guarantees, and current limitations.

@@ -64,6 +64,26 @@ class DashboardIntegrationTests(unittest.TestCase):
         dashboard.clock_timer.stop()
         return dashboard
 
+    def test_task_picker_attaches_completed_session_and_counts_time_once(self):
+        dashboard = self.dashboard()
+        dashboard.navigate(4)
+        dashboard.task_name.setText("Review a patch")
+        dashboard.task_project.setText("Compiler")
+        dashboard.task_estimate.setValue(25)
+        dashboard._add_task()
+        self.assertEqual(dashboard.task_picker.currentText(), "Compiler / Review a patch")
+        dashboard.navigate(1)
+        self.pet._start_focus_session(4)
+        self.tick(2)
+        self.pet._toggle_session_pause()
+        self.tick(2)
+        self.pet._toggle_session_pause()
+        self.tick(2)
+        dashboard.refresh()
+        self.assertEqual(self.db.get_tasks()[0]["focused_seconds"], 4)
+        self.assertEqual(self.db.get_recent_sessions()[0]["task_name"], "Review a patch")
+        self.assertEqual(self.db.get_today_stats()["focus_sessions_count"], 1)
+
     def tick(self, elapsed, state=ProductivityState.PRODUCTIVE):
         """Advance only the integration clock; never read foreground apps."""
         now = self.pet._last_tick + elapsed

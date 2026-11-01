@@ -254,6 +254,7 @@ class SettingsDialog(QDialog):
             parent = self.parent()
             if parent is not None and hasattr(parent, "focus_session_mgr"):
                 parent.focus_session_mgr.stop_all()
+                self.db.finish_checkpoint(discard=True)
                 parent.character_widget.set_focus_mode(False)
                 parent.character_widget.set_break_mode(False)
             self.db.reset_today_stats()

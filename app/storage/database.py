@@ -82,6 +82,16 @@ class DatabaseManager:
                 """)
             if "note" not in {row["name"] for row in conn.execute("PRAGMA table_info(focus_sessions)")}:
                 conn.execute("ALTER TABLE focus_sessions ADD COLUMN note TEXT NOT NULL DEFAULT ''")
+            if "task_id" not in {row["name"] for row in conn.execute("PRAGMA table_info(focus_sessions)")}:
+                conn.execute("ALTER TABLE focus_sessions ADD COLUMN task_id INTEGER")
+            conn.execute("""CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY, name TEXT NOT NULL, project TEXT NOT NULL DEFAULT '',
+                estimate_seconds INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL)""")
+            conn.execute("""CREATE TABLE IF NOT EXISTS focus_checkpoint (
+                singleton INTEGER PRIMARY KEY CHECK(singleton = 1), started TEXT NOT NULL,
+                updated TEXT NOT NULL, elapsed INTEGER NOT NULL, total INTEGER NOT NULL,
+                paused INTEGER NOT NULL, note TEXT NOT NULL, task_id INTEGER)""")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_focus_sessions_date ON focus_sessions(date)")
 
     @staticmethod
@@ -140,7 +150,7 @@ class DatabaseManager:
                 WHERE date = ?
             """, (*deltas, today_str))
 
-    def record_focus_session(self, duration_seconds, completed=True, start_time=None, end_time=None, source="manual", note=""):
+    def record_focus_session(self, duration_seconds, completed=True, start_time=None, end_time=None, source="manual", note="", task_id=None):
         """Record one session and its aggregate in a single transaction.
 
         Explicit timestamps can be datetime objects, ISO strings, or Unix
@@ -161,10 +171,10 @@ class DatabaseManager:
         with self._connection() as conn:
             conn.execute("INSERT OR IGNORE INTO daily_stats (date) VALUES (?)", (session_date,))
             cursor = conn.execute("""
-                INSERT INTO focus_sessions (date, start_time, end_time, duration_seconds, completed, source, note)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO focus_sessions (date, start_time, end_time, duration_seconds, completed, source, note, task_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (session_date, started.isoformat(sep=" ", timespec="seconds"),
-                  ended.isoformat(sep=" ", timespec="seconds"), duration, int(bool(completed)), source.strip(), note.strip()))
+                  ended.isoformat(sep=" ", timespec="seconds"), duration, int(bool(completed)), source.strip(), note.strip(), task_id))
             conn.execute("""
                 UPDATE daily_stats SET
                     focus_sessions_count = focus_sessions_count + ?,
@@ -227,8 +237,8 @@ class DatabaseManager:
             raise ValueError("limit must be a positive integer")
         with self._connection() as conn:
             rows = conn.execute("""
-                SELECT id, date, start_time, end_time, duration_seconds, completed, source
-                FROM focus_sessions ORDER BY end_time DESC, id DESC LIMIT ?
+                SELECT f.id, f.date, f.start_time, f.end_time, f.duration_seconds, f.completed, f.source, f.task_id, t.name AS task_name
+                FROM focus_sessions f LEFT JOIN tasks t ON t.id = f.task_id ORDER BY f.end_time DESC, f.id DESC LIMIT ?
             """, (limit,)).fetchall()
         return [{**dict(row), "completed": bool(row["completed"])} for row in rows]
 
@@ -251,3 +261,65 @@ class DatabaseManager:
     def get_timer_seconds_today(self):
         with self._connection() as conn:
             return conn.execute("SELECT COALESCE(SUM(duration_seconds), 0) FROM focus_sessions WHERE date = ? AND source = 'manual'", (date.today().isoformat(),)).fetchone()[0]
+
+    def create_task(self, name, project="", estimate_seconds=0):
+        name, project = name.strip(), project.strip()
+        if not name or len(name) > 100 or len(project) > 100:
+            raise ValueError("Enter a task name (up to 100 characters) and project (up to 100 characters).")
+        estimate = self._seconds(estimate_seconds)
+        with self._connection() as conn:
+            return conn.execute("INSERT INTO tasks (name, project, estimate_seconds, created_at) VALUES (?, ?, ?, ?)",
+                                (name, project, estimate, datetime.now().isoformat())).lastrowid
+
+    def update_task(self, task_id, name=None, status=None):
+        if name is not None:
+            name = name.strip()
+            if not name or len(name) > 100:
+                raise ValueError("Task name must contain 1–100 characters.")
+        if status is not None and status not in ("active", "completed", "archived"):
+            raise ValueError("Invalid task status.")
+        with self._connection() as conn:
+            conn.execute("UPDATE tasks SET name = COALESCE(?, name), status = COALESCE(?, status) WHERE id = ?", (name, status, task_id))
+
+    def get_tasks(self):
+        with self._connection() as conn:
+            return [dict(row) for row in conn.execute("""SELECT t.*, COALESCE(SUM(f.duration_seconds), 0) AS focused_seconds
+                FROM tasks t LEFT JOIN focus_sessions f ON f.task_id = t.id AND f.source = 'manual'
+                GROUP BY t.id ORDER BY CASE t.status WHEN 'active' THEN 0 WHEN 'completed' THEN 1 ELSE 2 END, t.id DESC""")]
+
+    def get_checkpoint(self):
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM focus_checkpoint WHERE singleton = 1").fetchone()
+            return dict(row) if row else None
+
+    def save_checkpoint(self, started, elapsed, total, paused, note="", task_id=None, *, new=False):
+        elapsed, total = self._seconds(elapsed), self._seconds(total)
+        if not total or elapsed > total or len(note) > 120:
+            raise ValueError("Invalid focus checkpoint")
+        started = self._as_datetime(started)
+        updated = max(datetime.now(), started)
+        with self._connection() as conn:
+            if new:
+                conn.execute("INSERT INTO focus_checkpoint VALUES (1, ?, ?, ?, ?, ?, ?, ?)",
+                    (started.isoformat(), updated.isoformat(), elapsed, total, int(paused), note, task_id))
+            else:
+                conn.execute("UPDATE focus_checkpoint SET updated=?, elapsed=?, paused=? WHERE singleton=1",
+                    (updated.isoformat(), elapsed, int(paused)))
+
+    def finish_checkpoint(self, completed=False, discard=False):
+        """Atomically consume one checkpoint and save at most one session."""
+        with self._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM focus_checkpoint WHERE singleton=1").fetchone()
+            if row is None:
+                return False
+            if not discard and row['elapsed'] > 0:
+                ended = self._as_datetime(row['updated'])
+                day = ended.date().isoformat()
+                conn.execute("INSERT OR IGNORE INTO daily_stats(date) VALUES (?)", (day,))
+                conn.execute("""INSERT INTO focus_sessions (date, start_time, end_time, duration_seconds, completed, source, note, task_id)
+                    VALUES (?, ?, ?, ?, ?, 'manual', ?, ?)""", (day, row['started'], row['updated'], row['elapsed'], int(completed), row['note'], row['task_id']))
+                conn.execute("UPDATE daily_stats SET focus_sessions_count=focus_sessions_count+?, longest_session_seconds=MAX(longest_session_seconds, ?) WHERE date=?",
+                    (int(completed), row['elapsed'], day))
+            conn.execute("DELETE FROM focus_checkpoint WHERE singleton=1")
+            return True

@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from PySide6.QtCore import Qt, QSharedMemory
 from PySide6.QtGui import QIcon, QAction, QPixmap, QPainter, QColor
-from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
 
 from app.config.settings import SettingsManager
 from app.storage.database import DatabaseManager
@@ -82,6 +82,16 @@ def main():
     if not settings.get("onboarding_complete", False):
         if WelcomeDialog(settings).exec() != WelcomeDialog.Accepted:
             return
+
+    checkpoint = db.get_checkpoint()
+    if checkpoint:
+        decision = QMessageBox.question(None, "Interrupted focus session",
+            f"MoodPet found an interrupted session with {checkpoint['elapsed'] // 60}m {checkpoint['elapsed'] % 60}s of verified focus.\n\n"
+            "Save this time as a partial session? Choose No to discard it, or Cancel to decide later. Time while MoodPet was closed is never counted.",
+            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel, QMessageBox.Yes)
+        if decision == QMessageBox.Cancel:
+            return
+        db.finish_checkpoint(discard=decision != QMessageBox.Yes)
 
     # Pet Window
     pet_window = PetWindow(settings, db)
