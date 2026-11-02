@@ -1,6 +1,7 @@
 """Reward validation and idempotency inside the caller's SQLite transaction."""
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from app.productivity.progression import RULES, RULES_V1, progress_for
+from app.productivity.streaks import work_days, streak_summary
 
 
 class RewardService:
@@ -55,12 +56,9 @@ class RewardService:
     @staticmethod
     def sync_achievements(conn):
         productive, completed = conn.execute('SELECT COALESCE(SUM(productive_seconds),0), COALESCE(SUM(focus_sessions_count),0) FROM daily_stats').fetchone()
-        days = [date.fromisoformat(r[0]) for r in conn.execute('SELECT date FROM daily_stats WHERE date<=? AND (productive_seconds>=900 OR focus_sessions_count>0) ORDER BY date', (date.today().isoformat(),))]
-        best = run = 0
-        previous = None
-        for day in days:
-            run = run + 1 if previous and day-previous == timedelta(days=1) else 1
-            best = max(best,run); previous = day
+        worked=work_days(conn)
+        protected={date.fromisoformat(r[0]) for r in conn.execute('SELECT date FROM streak_repairs WHERE date<=?',(date.today().isoformat(),))}
+        best=streak_summary(worked,protected,date.today())['best_streak']
         for earned, name in ((completed>=1,'First step'), (best>=3,'Finding rhythm'), (best>=7,'A week of you'), (productive>=36000,'Deep roots')):
             if earned:
                 conn.execute('INSERT OR IGNORE INTO earned_achievements VALUES (?,?)', (name,datetime.now().isoformat()))

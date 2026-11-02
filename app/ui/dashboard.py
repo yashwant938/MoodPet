@@ -296,7 +296,19 @@ class Dashboard(QDialog):
         self.period_picker.currentIndexChanged.connect(self._period_changed)
         chart_header.addWidget(self.period_picker)
         activity_layout.addLayout(chart_header)
+        source_row=QHBoxLayout()
+        source_row.addWidget(label('Time source','muted'))
+        self.measure_picker=QComboBox()
+        self.measure_picker.setAccessibleName('Chart and calendar time source')
+        self.measure_picker.addItem('Focus timers','manual')
+        self.measure_picker.addItem('Tracked app activity','tracked')
+        self.measure_picker.setCurrentIndex(1 if self.settings.get('tracking_mode','manual')=='automatic' else 0)
+        self.measure_picker.currentIndexChanged.connect(self._measure_changed)
+        source_row.addWidget(self.measure_picker)
+        source_row.addStretch()
+        activity_layout.addLayout(source_row)
         self.chart_summary = label("Activity adds up to progress.", "muted")
+        self.chart_summary.setWordWrap(True)
         activity_layout.addWidget(self.chart_summary)
         self.activity_chart = ActivityChart()
         self.activity_chart.setMinimumHeight(220)
@@ -335,7 +347,9 @@ class Dashboard(QDialog):
         bottom.setSpacing(18)
         consistency, consistency_layout = card()
         consistency_layout.addWidget(label("Little steps, lasting habits", "sectionTitle"))
-        consistency_layout.addWidget(label("Your last 12 weeks. Hover a day to explore.", "muted"))
+        self.heatmap_caption=label('Your last 12 weeks. Hover a day to explore.','muted')
+        self.heatmap_caption.setWordWrap(True)
+        consistency_layout.addWidget(self.heatmap_caption)
         self.heatmap = ActivityHeatmap()
         self.heatmap.setMinimumHeight(155)
         consistency_layout.addWidget(self.heatmap)
@@ -360,7 +374,23 @@ class Dashboard(QDialog):
         quest_layout.addWidget(self.badge_label)
         bottom.addWidget(quest, 1)
         layout.addLayout(bottom)
-        foot = label("A streak day = 15 productive minutes or one completed session. Your history stays here, on your device.", "muted")
+        repairs,repairs_layout=card()
+        repairs_layout.addWidget(label('Streak care · two free tokens each month','sectionTitle'))
+        self.repair_summary=label('','muted'); self.repair_summary.setWordWrap(True)
+        repairs_layout.addWidget(self.repair_summary)
+        controls=QHBoxLayout()
+        self.repair_day_picker=QComboBox()
+        self.repair_day_picker.setAccessibleName('Missed day to protect with a free streak token')
+        controls.addWidget(self.repair_day_picker,1)
+        self.repair_button=QPushButton('Use 1 free token')
+        self.repair_button.clicked.connect(self._repair_day)
+        controls.addWidget(self.repair_button)
+        repairs_layout.addLayout(controls)
+        self.repair_feedback=label('Protect a missed past day from the last 30 days. Gold diamonds mark protected days; no XP or focus time is added.','muted')
+        self.repair_feedback.setWordWrap(True)
+        repairs_layout.addWidget(self.repair_feedback)
+        layout.addWidget(repairs)
+        foot = label("Any recorded focus work keeps your streak: timer sessions, including partials, or productive app activity. Your history stays on this device.", "muted")
         foot.setWordWrap(True)
         layout.addWidget(foot)
         layout.addStretch()
@@ -674,6 +704,27 @@ class Dashboard(QDialog):
         self.period = self.period_picker.currentData()
         self.refresh()
 
+    def _measure_changed(self):
+        self.refresh()
+
+    def _repair_day(self):
+        day=self.repair_day_picker.currentData()
+        if day is None:
+            return
+        day=date.fromisoformat(day)
+        try:
+            self.db.repair_streak_day(day)
+        except ValueError as error:
+            QMessageBox.warning(self,'Streak day could not be protected',str(error))
+            self.refresh()
+            return
+        streak=self.db.get_streaks()['current_streak']
+        self.repair_feedback.setText(f"Protected {day.strftime('%A, %d %B')}. Current streak: {streak} days. One free token used; focus time and XP are unchanged.")
+        parent=self.parent()
+        if parent is not None and hasattr(parent,'focus_tracker'):
+            parent.focus_tracker.current_streak=streak
+        self.refresh()
+
     def _save_goal(self, value):
         self.settings.set("daily_goal_minutes", value)
         self.refresh()
@@ -695,10 +746,11 @@ class Dashboard(QDialog):
         today = self.db.get_today_stats()
         streaks = self.db.get_streaks()
         lifetime = self.db.get_lifetime_stats()
-        rows = self.db.get_daily_history(self.period)
+        measure=self.measure_picker.currentData()
+        rows = self.db.get_focus_history(self.period) if measure=='manual' else self.db.get_daily_history(self.period)
         productive = today["productive_seconds"]
         classified = productive + today["distracted_seconds"]
-        self.date_label.setText(datetime.now().strftime("%A, %d %B").upper())
+        self.date_label.setText(('DEMO · FICTIONAL DATA · ' if self.settings.get('demo_mode',False) else '')+datetime.now().strftime("%A, %d %B").upper())
         manual = self.settings.get("tracking_mode", "manual") != "automatic"
         progress = self.db.get_timer_seconds_today() if manual else productive
         self.stat_titles["productive"].setText("TIMER TIME TODAY" if manual else "PRODUCTIVE TODAY")
@@ -709,31 +761,55 @@ class Dashboard(QDialog):
         self.stat_values["streak"].setText(f"{streaks['current_streak']} days")
         self.stat_details["streak"].setText(f"Personal best: {streaks['best_streak']} days")
         self.stat_values["balance"].setText(f"{round(productive / classified * 100)}%" if classified else "—")
+        self.stat_titles['balance'].setText('RECORDED WORK DAYS' if manual else 'FOCUS BALANCE')
+        self.stat_details['balance'].setText('Days with focus work; repair days excluded' if manual else 'Productive / classified time')
+        if manual:
+            self.stat_values['balance'].setText(str(streaks['active_days']))
         self.stat_values["sessions"].setText(str(today["focus_sessions_count"]))
-        self.activity_chart.set_data(rows)
+        self.activity_chart.set_data(rows,measure=measure)
         total = sum(row["productive_seconds"] for row in rows)
-        self.chart_summary.setText(f"{duration(total)} productive across the last {self.period} days")
+        self.chart_summary.setText(f"{duration(total)} {'saved focus time' if measure=='manual' else 'tracked productive time'} across the last {self.period} days")
         if total:
             best = max(rows, key=lambda row: row["productive_seconds"])
             best_day = date.fromisoformat(best["date"]).strftime("%a, %d %b")
             self.insight_label.setText(f"Your strongest day: {best_day} · {duration(best['productive_seconds'])} productive. Keep finding your rhythm.")
         else:
             self.insight_label.setText("Your story starts here. Use a productive app and your activity will appear automatically.")
-        if manual:
-            self.chart_summary.setText(f"Tracked app activity · automatic monitoring is off")
-            self.insight_label.setText("Completed timer sessions grow your companion. Enable automatic tracking in Preferences only if you want app-activity charts.")
+        if measure=='manual':
+            if total:
+                best=max(rows,key=lambda row:row['productive_seconds'])
+                self.insight_label.setText(f"Strongest saved timer day: {date.fromisoformat(best['date']).strftime('%a, %d %b')} · {duration(best['productive_seconds'])}. Includes partial sessions; pauses are excluded.")
+            else:
+                self.insight_label.setText('Saved focus timers appear here when completed or ended. Learning outside the timer is not recorded in timer-only mode.')
+        elif manual:
+            self.insight_label.setText('Historical tracked app activity is shown separately. Automatic monitoring is currently off; choose Focus timers to see your saved sessions.')
         target = self.goal_input.value() * 60
         self.goal_ring.set_progress(progress, target)
         self.goal_summary.setText(f"{duration(progress)} of {duration(target)}" + (" · Goal reached!" if progress >= target else ""))
-        self.heatmap.set_data(self.db.get_daily_history(84))
-        self.streak_detail.setText(f"{streaks['active_days']} qualifying days, all time · Best streak: {streaks['best_streak']} days")
+        repair_status=self.db.get_streak_repair_status()
+        calendar=self.db.get_focus_history(84) if measure=='manual' else self.db.get_daily_history(84)
+        self.heatmap.set_data(calendar,measure=measure,repairs=repair_status['repaired_dates'])
+        self.heatmap_caption.setText('Last 12 weeks · '+('saved focus timers' if measure=='manual' else 'tracked productive activity')+'. Red to dark chocolate means more time. Hover for exact hours.')
+        self.streak_detail.setText(f"{streaks['active_days']} recorded work days · Best streak: {streaks['best_streak']} days. Protected days keep the chain without adding work time.")
+        self.repair_summary.setText(f"{repair_status['remaining']} of 2 free tokens available in {date.today().strftime('%B %Y')}. The allowance renews each calendar month and does not roll over.")
+        selected=self.repair_day_picker.currentData()
+        if not self.repair_day_picker.view().isVisible():
+            self.repair_day_picker.blockSignals(True)
+            self.repair_day_picker.clear()
+            for day in repair_status['eligible_dates']:
+                self.repair_day_picker.addItem(day.strftime('%a, %d %b %Y'),day.isoformat())
+            if not repair_status['eligible_dates']:
+                self.repair_day_picker.addItem('No missed past days to protect',None)
+            self.repair_day_picker.setCurrentIndex(max(0,self.repair_day_picker.findData(selected)))
+            self.repair_day_picker.blockSignals(False)
+        self.repair_button.setEnabled(repair_status['remaining']>0 and bool(repair_status['eligible_dates']))
         for widget, done, text in zip(self.quest_labels,
                 (progress >= 900, today["focus_sessions_count"] > 0, progress >= target),
                 ("Find 15 minutes of focus", "Complete a focus session", "Reach your daily goal")):
             widget.setText(f"{'●' if done else '○'}  {text}")
             widget.setStyleSheet(f"color: {'#237A57' if done else '#728176'}; padding: 5px 0;")
-        self.badge_label.setText(f"Your companion has grown with you for {duration(lifetime['productive_seconds'])} of productive time.")
-        self.lifetime_label.setText(f"All time: {duration(lifetime['productive_seconds'])} productive · {lifetime['completed_sessions']} completed sessions · Longest session {duration(lifetime['longest_session_seconds'])}")
+        self.badge_label.setText(f"Your companion has grown with you for {duration(lifetime['manual_seconds'] if manual else lifetime['productive_seconds'])} of {'saved focus time' if manual else 'tracked productive time'}.")
+        self.lifetime_label.setText(f"All time: {duration(lifetime['manual_seconds'])} focus timers · {duration(lifetime['productive_seconds'])} tracked productive · {lifetime['completed_sessions']} completed sessions · Longest session {duration(lifetime['longest_session_seconds'])}")
         sessions = self.db.get_recent_sessions(100)
         self.history_table.setRowCount(len(sessions))
         self.history_empty.setVisible(not sessions)

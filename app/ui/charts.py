@@ -18,10 +18,19 @@ from PySide6.QtWidgets import QSizePolicy, QToolTip, QWidget
 INK = QColor("#182424")
 MUTED = QColor("#738079")
 GRID = QColor("#E9EEEB")
-PRODUCTIVE = QColor("#237A57")
+PRODUCTIVE = QColor("#AF4134")
 DISTRACTED = QColor("#E9AA75")
 IDLE = QColor("#DAE2DD")
-HEAT_COLORS = ("#EDF1EE", "#D3EADB", "#95CDB0", "#59A47E", "#237A57")
+HEAT_COLORS = ("#F0EDEA", "#F9DED9", "#ECA99E", "#D96D5A", "#AF4134", "#7C3029", "#48201D")
+
+
+def _heat_level(seconds):
+    if seconds <= 0:
+        return 0
+    for level,threshold in enumerate((1800,3600,7200,14400,21600),1):
+        if seconds < threshold:
+            return level
+    return 6
 
 
 def _seconds(value) -> float:
@@ -89,6 +98,7 @@ class ActivityChart(QWidget):
         self._rows = []
         self._hit_regions = []
         self._hover_index = -1
+        self.measure = 'tracked'
         self.setMouseTracking(True)
         self.setMinimumSize(350, 220)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -98,14 +108,15 @@ class ActivityChart(QWidget):
     def sizeHint(self):
         return QSize(640, 240)
 
-    def set_data(self, rows):
+    def set_data(self, rows, measure='tracked'):
+        self.measure = measure
         self._rows = _rows(rows)
         self._hover_index = -1
         self._hit_regions = []
         total = sum(row["productive_seconds"] for row in self._rows)
         self.setAccessibleDescription(
-            f"{len(self._rows)} days, {_duration(total)} productive time. "
-            "Hover over a day for productive, distracted, and idle durations."
+            f"{len(self._rows)} days, {_duration(total)} {'focus timer' if measure == 'manual' else 'productive'} time. "
+            + ('Hover over a day for saved timer duration.' if measure=='manual' else 'Hover over a day for productive, distracted, and idle durations.')
         )
         self.update()
 
@@ -131,7 +142,8 @@ class ActivityChart(QWidget):
         metrics = painter.fontMetrics()
 
         legend_x = 4.0
-        for label, color in (("Productive", PRODUCTIVE), ("Distracted", DISTRACTED), ("Idle", IDLE)):
+        entries = (("Focus timers", PRODUCTIVE),) if self.measure == 'manual' else (("Productive", PRODUCTIVE), ("Distracted", DISTRACTED), ("Idle", IDLE))
+        for label, color in entries:
             painter.setPen(Qt.NoPen)
             painter.setBrush(color)
             painter.drawEllipse(QRectF(legend_x, 8, 7, 7))
@@ -180,6 +192,8 @@ class ActivityChart(QWidget):
                     painter.setClipPath(outline)
                     y_bottom = plot.bottom()
                     for key, color in (("productive_seconds", PRODUCTIVE), ("distracted_seconds", DISTRACTED), ("idle_seconds", IDLE)):
+                        if key == 'productive_seconds':
+                            color = QColor(HEAT_COLORS[_heat_level(row[key])])
                         segment_height = row[key] / scale * plot.height()
                         painter.fillRect(QRectF(center_x - bar_width / 2, y_bottom - segment_height,
                                                bar_width, segment_height + 0.3), color)
@@ -201,16 +215,20 @@ class ActivityChart(QWidget):
 
         if not maximum:
             # A solid panel keeps the empty-state copy readable over the grid.
-            message = QRectF(plot.center().x() - 135, plot.center().y() - 31, 270, 62)
+            width = max(180,min(420,plot.width()-16))
+            message = QRectF(plot.center().x()-width/2,plot.center().y()-48,width,96)
             painter.setPen(Qt.NoPen)
             painter.setBrush(QColor("#FFFFFF"))
             painter.drawRoundedRect(message, 10, 10)
             painter.setFont(_font(11, True))
             painter.setPen(INK)
-            painter.drawText(message.adjusted(0, 4, 0, -30), Qt.AlignCenter, "Your story starts here")
+            painter.drawText(message.adjusted(8,4,-8,-58),Qt.AlignCenter, "No saved focus time yet" if self.measure=='manual' else "Your story starts here")
             painter.setFont(_font(9))
             painter.setPen(MUTED)
-            painter.drawText(message.adjusted(0, 31, 0, -3), Qt.AlignCenter, "Activity will appear as you use your computer." if getattr(self, "monitoring_enabled", True) else "Automatic tracking is off. Timer progress is shown separately.")
+            body = ('Complete or end a focus timer to see its saved time here.' if self.measure=='manual' else
+                    'Activity will appear as you use your computer.' if getattr(self,'monitoring_enabled',True) else
+                    'Automatic tracking is off. Choose Focus timers to see your saved sessions.')
+            painter.drawText(message.adjusted(10,38,-10,-4),Qt.AlignCenter | Qt.TextWordWrap,body)
 
     def mouseMoveEvent(self, event):
         index = next((i for i, region in enumerate(self._hit_regions)
@@ -224,6 +242,8 @@ class ActivityChart(QWidget):
                     f"Productive: {_duration(row['productive_seconds'])}\n"
                     f"Distracted: {_duration(row['distracted_seconds'])}\n"
                     f"Idle: {_duration(row['idle_seconds'])}")
+            if self.measure == 'manual':
+                text = f"{row['date'].strftime('%A, %d %B')}\nSaved focus timers: {_duration(row['productive_seconds'])}"
             QToolTip.showText(event.globalPosition().toPoint(), text, self)
         else:
             QToolTip.hideText()
@@ -239,7 +259,7 @@ class ActivityChart(QWidget):
 class ActivityHeatmap(QWidget):
     """The last 84 calendar days, shaded by productive time.
 
-    Cells use fixed thresholds (positive time, 30, 60, 120 minutes), so a color keeps its
+    Cells use fixed thresholds (positive time, 30m, 1h, 2h, 4h, 6h), so a color keeps its
     meaning as the user's activity changes. Missing days are empty cells.
     """
 
@@ -248,16 +268,20 @@ class ActivityHeatmap(QWidget):
         self._days = {}
         self._cells = []
         self._hover_day = None
+        self.measure = 'tracked'
+        self.repaired_days = set()
         self.setMouseTracking(True)
         self.setMinimumSize(370, 216)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.setAccessibleName("Twelve week activity calendar")
-        self.setAccessibleDescription("The last 84 days. Darker green means more productive time. Hover over a day for details.")
+        self.setAccessibleDescription("The last 84 days. Pink, red and chocolate shades mark increasing focus time, up to 6 hours or more. Gold diamonds mark repaired streak days, without adding work time.")
 
     def sizeHint(self):
         return QSize(560, 224)
 
-    def set_data(self, rows):
+    def set_data(self, rows, measure='tracked', repairs=()):
+        self.measure = measure
+        self.repaired_days = {_date(day) for day in repairs}
         self._days = {row["date"]: row for row in _rows(rows)}
         self._cells = []
         self._hover_day = None
@@ -265,9 +289,7 @@ class ActivityHeatmap(QWidget):
 
     @staticmethod
     def _level(seconds):
-        if seconds <= 0:
-            return 0
-        return 1 if seconds < 1800 else 2 if seconds < 3600 else 3 if seconds < 7200 else 4
+        return _heat_level(seconds)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -314,6 +336,13 @@ class ActivityHeatmap(QWidget):
                 else:
                     painter.setPen(Qt.NoPen)
                 painter.drawRoundedRect(rect, 3.5, 3.5)
+                if day in self.repaired_days:
+                    center=rect.center()
+                    diamond=QPainterPath(QPointF(center.x(),center.y()-4))
+                    diamond.lineTo(center.x()+4,center.y()); diamond.lineTo(center.x(),center.y()+4)
+                    diamond.lineTo(center.x()-4,center.y()); diamond.closeSubpath()
+                    painter.setPen(QPen(QColor('#946C19'),1)); painter.setBrush(QColor('#E4BF62'))
+                    painter.drawPath(diamond)
 
         legend_y = top + 7 * step + 9
         painter.setPen(MUTED)
@@ -324,8 +353,7 @@ class ActivityHeatmap(QWidget):
             painter.setBrush(QColor(color))
             painter.drawRoundedRect(QRectF(legend_x + index * 16, legend_y, 11, 11), 2.5, 2.5)
         painter.setPen(MUTED)
-        painter.drawText(QRectF(legend_x + 83, legend_y - 2, 145, 16), Qt.AlignLeft | Qt.AlignVCenter,
-                         "More productive time")
+        painter.drawText(QRectF(legend_x + len(HEAT_COLORS)*16+3, legend_y-2,145,16),Qt.AlignLeft | Qt.AlignVCenter,'6h+ · darker = more')
 
     def mouseMoveEvent(self, event):
         day = next((day for rect, day in self._cells if rect.contains(event.position())), None)
@@ -338,6 +366,10 @@ class ActivityHeatmap(QWidget):
                     f"Productive: {_duration(row.get('productive_seconds', 0))}\n"
                     f"Distracted: {_duration(row.get('distracted_seconds', 0))}\n"
                     f"Idle: {_duration(row.get('idle_seconds', 0))}")
+            if self.measure == 'manual':
+                text=f"{day.strftime('%A, %d %B %Y')}\nSaved focus timers: {_duration(row.get('productive_seconds',0))}"
+            if day in self.repaired_days:
+                text+='\nStreak protected with a free repair token. No work time added.'
             QToolTip.showText(event.globalPosition().toPoint(), text, self)
         else:
             QToolTip.hideText()

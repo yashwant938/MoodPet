@@ -39,6 +39,12 @@ Existing XP is migrated once from the old calculation and old completed sessions
 
 Timer-only goals still use saved manual-session durations (including partial sessions), excluding pauses. Automatic goals use productive app time. These time measures remain separate.
 
+## Focus charts and streak care
+
+The Overview chart and 12-week calendar now share an explicit time-source selector. Timer-only mode shows saved focus timers by default. Pink/red/chocolate intensity increases through 30 minutes, 1h, 2h, 4h and 6h+, with exact hover details. Any recorded focus time keeps the streak, including partial manual sessions; productive app activity also qualifies.
+
+**Streak care** offers two free, non-bankable repair tokens each calendar month. Select a missed past day from the last 30 days to protect it. Gold diamonds distinguish protection from work: no hours, sessions or XP are added. See [charts and streak care](CHARTS_AND_STREAKS.md) for eligibility and persistence details.
+
 ## Choose a tone
 
 Gentle is the default and uses supportive speech and non-punitive poses. Playful uses more expressive reactions with revised supportive dialogue. Quiet suppresses all speech, including session and developer-event messages. Quiet hours continue to silence speech during the configured period. The character's states describe app behavior, not a measurement of your emotions.

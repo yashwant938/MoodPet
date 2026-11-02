@@ -44,7 +44,8 @@ Try `python main.py --demo` to explore fictional temporary history with no activ
 - Organize optional focus tasks by project, add time estimates, and see completed and partial timer time per task.
 - An interrupted timer offers to save its last checkpoint as a partial session or discard it; no time is credited while the app is closed.
 - Idle tracking handles Windows tick-counter wraparound, with regression coverage.
-- Charts offer 7/30-day activity views, a 12-week calendar, hover details, and CSV export.
+- Charts offer separate saved-timer and tracked-activity views, a red-to-chocolate 12-week calendar through 6h+, exact hover details, and CSV export.
+- Two free, non-bankable streak repair tokens each calendar month can protect missed past days without adding XP or recorded work.
 - Monitoring reads foreground app names and window titles for classification; stored records contain aggregate durations and sessions, not titles or keystrokes.
 
 ## Tech Stack
@@ -53,7 +54,7 @@ Try `python main.py --demo` to explore fictional temporary history with no activ
 
 ## How It Works
 
-Click the pet or tray icon to open the dashboard. In automatic mode, activity matching your rules is classified as productive or distracted; idle time is tracked separately. A streak day requires **15 productive minutes or one completed focus session**. Manual focus timers measure session time independently of app classifications. In timer-only mode the daily goal uses saved manual timer time; automatic-mode goals use tracked productive time. The activity charts always show recorded app activity, so these measures are never combined.
+Click the pet or tray icon to open the dashboard. In automatic mode, activity matching your rules is classified as productive or distracted; idle time is tracked separately. A streak day requires **any positive recorded focus time**: saved manual timer time (including partials) or productive app activity; legacy completion days remain valid. Manual focus timers measure session time independently of app classifications. In timer-only mode the daily goal uses saved manual timer time; automatic-mode goals use tracked productive time. The activity charts always show recorded app activity, so these measures are never combined.
 
 Settings are stored at `%USERPROFILE%\.moodpet\config.json`; history is at `%USERPROFILE%\.moodpet\moodpet.db`. Timers are saved as partial on a normal exit. After an unexpected termination you can save the last checkpoint as partial or discard it; timers do not automatically resume.
 
@@ -101,6 +102,8 @@ See the [usage and data guide](docs/USAGE.md) for exact scoring, history, automa
 See [the new experience guide](docs/FOCUS_JOURNEY.md) for corrections, tone, developer events, packaging and data behavior.
 
 See [tasks and recovery](docs/TASKS_AND_RECOVERY.md) for migration details, recovery guarantees, and current limitations.
+
+See [focus charts and streak care](docs/CHARTS_AND_STREAKS.md) for time sources, color bands and the two free monthly repair tokens.
 
 See [evolution architecture](docs/EVOLUTION.md) for reward rules, migration and validation details. Reproduce the fixture screenshots with `python docs/preview_evolution.py`.
 

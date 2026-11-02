@@ -65,6 +65,33 @@ class DashboardIntegrationTests(unittest.TestCase):
         dashboard.clock_timer.stop()
         return dashboard
 
+    def test_timer_only_charts_and_repair_button_show_real_data(self):
+        self.settings.set('tracking_mode','manual')
+        today=datetime.now().date()
+        before=today-timedelta(days=2)
+        self.db.record_focus_session(22200,end_time=datetime.combine(before,datetime.min.time())+timedelta(hours=12))
+        self.db.record_focus_session(12,completed=False)
+        dashboard=self.dashboard()
+        self.assertEqual(dashboard.measure_picker.currentData(),'manual')
+        self.assertEqual(sum(r['productive_seconds'] for r in dashboard.activity_chart._rows),22212)
+        self.assertIn('6h 10m saved focus time',dashboard.chart_summary.text())
+        self.assertIn('6h 10m of saved focus time',dashboard.badge_label.text())
+        dashboard.resize(960,640)
+        self.app.processEvents()
+        self.assertEqual(dashboard.pages.currentWidget().horizontalScrollBar().maximum(),0)
+        self.assertEqual(self.db.get_streaks()['current_streak'],1)
+        xp=self.db.get_evolution_snapshot()['progress'].xp
+        self.assertTrue(dashboard.repair_button.isEnabled())
+        dashboard.pages.currentWidget().ensureWidgetVisible(dashboard.repair_button)
+        self.app.processEvents()
+        QTest.mouseClick(dashboard.repair_button,Qt.LeftButton)
+        self.assertEqual(self.db.get_streaks()['current_streak'],3)
+        self.assertEqual(self.db.get_streak_repair_status()['remaining'],1)
+        self.assertEqual(self.db.get_evolution_snapshot()['progress'].xp,xp)
+        self.assertIn(today-timedelta(days=1),dashboard.heatmap.repaired_days)
+        dashboard.measure_picker.setCurrentIndex(1)
+        self.assertEqual(sum(r['productive_seconds'] for r in dashboard.activity_chart._rows),0)
+
     def test_pet_menu_shows_current_task_and_separate_weekly_averages(self):
         self.db.get_previous_week_totals = lambda: {
             "start": datetime(2026, 10, 26).date(), "end": datetime(2026, 11, 1).date(),
