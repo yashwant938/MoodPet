@@ -11,7 +11,7 @@ from PySide6.QtCore import QEvent, QPointF, Qt
 from PySide6.QtGui import QFontDatabase, QMouseEvent
 from PySide6.QtWidgets import QApplication
 
-from app.ui.charts import ActivityChart, ActivityHeatmap, GoalRing
+from app.ui.charts import ActivityChart, ActivityHeatmap, GoalRing, HEAT_COLORS
 
 
 class ChartTests(unittest.TestCase):
@@ -115,6 +115,28 @@ class ChartTests(unittest.TestCase):
         ring.set_progress(8200, 7200)
         self.assertFalse(ring.grab().isNull())
         self.assertIn("2h 16m 40s of 2h", ring.toolTip())
+
+    def test_manual_focus_and_red_chocolate_thresholds_are_visible(self):
+        chart=ActivityChart()
+        chart.set_data([{'date':date.today(),'productive_seconds':22200}],measure='manual')
+        self.render(chart,350,220)
+        self.assertIn('6h 10m focus timer time',chart.accessibleDescription())
+        self.assertGreaterEqual(chart._scale(22200),22200)
+        with patch('app.ui.charts.QToolTip.showText') as show:
+            self.move(chart,chart._hit_regions[0].center())
+            self.assertIn('Saved focus timers: 6h 10m',show.call_args.args[1])
+        self.assertEqual([ActivityHeatmap._level(n) for n in (0,1,1800,3600,7200,14400,21600)],list(range(7)))
+
+    def test_repaired_heatmap_day_is_explicit_without_fake_focus(self):
+        chart=ActivityHeatmap()
+        day=date.today()-timedelta(days=1)
+        chart.set_data([],measure='manual',repairs=[day])
+        self.render(chart,370,216)
+        cell=next(rect for rect,value in chart._cells if value==day)
+        with patch('app.ui.charts.QToolTip.showText') as show:
+            self.move(chart,cell.center())
+            self.assertIn('Saved focus timers: 0s',show.call_args.args[1])
+            self.assertIn('protected with a free repair token',show.call_args.args[1])
 
 
 if __name__ == "__main__":

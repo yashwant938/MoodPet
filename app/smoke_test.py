@@ -1,6 +1,7 @@
 """Packaged-app check that never reads the real profile or foreground apps."""
 import os
 import tempfile
+from datetime import datetime, timedelta
 from pathlib import Path
 
 
@@ -21,6 +22,7 @@ def run():
         settings.set("animations_enabled", False)
         db = DatabaseManager(Path(directory) / "fixture.db")
         db.record_focus_session(900, note="Packaged app check")
+        db.record_focus_session(1,completed=False,end_time=datetime.now()-timedelta(days=2))
         welcome = WelcomeDialog(settings)
         welcome.show()
         app.processEvents()
@@ -38,6 +40,13 @@ def run():
         assert not dashboard.journey.map.nodes[1].isEnabled()
         assert not dashboard.mini_pet.observe_activity
         assert not dashboard.grab().isNull()
+        assert dashboard.measure_picker.currentData() == 'manual'
+        assert sum(row['productive_seconds'] for row in dashboard.activity_chart._rows) == 901
+        assert dashboard.repair_button.isEnabled()
+        dashboard.pages.currentWidget().ensureWidgetVisible(dashboard.repair_button)
+        QTest.mouseClick(dashboard.repair_button,Qt.LeftButton)
+        assert db.get_streak_repair_status()['remaining'] == 1
+        assert db.get_streaks()['current_streak'] == 3
         # Exercise the same keyboard/mouse paths as the installed application.
         dashboard.navigate(4)
         dashboard.task_name.setFocus()
