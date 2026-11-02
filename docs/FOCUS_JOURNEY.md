@@ -4,10 +4,12 @@
 
 On first launch choose Orbit (ivory) or Starlight (lavender), a daily goal, and a tracking mode. Cancelling exits before the tracker starts. Existing users also make this choice; old records are preserved.
 
-- **Timer only:** foreground apps, idle/input APIs and animated foreground-window eye tracking are not polled. Saved focus-timer minutes drive the daily goal. Timers, history, achievements and the constellation still work.
+- **Timer only:** foreground apps, idle/input APIs and animated foreground-window eye tracking are not polled. Saved focus-timer minutes drive the daily goal. Timers, history, achievements and the evolution journey still work.
 - **Automatic:** local app names, window titles and time since input drive editable rules. Only aggregate durations and sessions are saved. The daily goal uses tracked productive time. Timers remain independent.
 
 Click the pet or tray icon to open the dashboard. Right-click the pet or open the tray menu for **Quick actions**. Starting a second timer is disabled while a timer is active. Pause activity tracking for 15 minutes without stopping a manual focus timer; use Resume tracking to return early. Hiding the pet does not pause tracking.
+
+The pet's right-click menu shows the current focus task (or a paused, break, or idle state) and the average daily time for the previous complete Monday–Sunday week. All seven days count, including days without activity. Focus timers and automatically tracked productive activity are displayed separately; they can overlap and are not added together. Timer averages include saved partial and completed sessions, assigned to their end date.
 
 ## Understand and correct activity
 
@@ -19,17 +21,29 @@ Entering a keyword explicitly saves a rule for future matching window titles. Th
 
 ## Tasks and interrupted timers
 
-Open **Tasks** to add a task, an optional project label and estimate. Select a row to rename, complete, archive or reopen it. The Focus room lets you choose an active task, or focus without one. Task time is the sum of saved manual sessions, including partial sessions; it is kept separate from tracked app activity.
+Open **Tasks** to add a task, an optional project label and estimate. Press Enter in the task name or project field, or click **Add task**. Select a row to rename, complete, archive or reopen it. For an active task, **Focus on this task** (or a double-click) opens the Focus room with that task selected; click **Start focus** when ready. The Focus room also lets you choose an active task, or focus without one. Task time is the sum of saved manual sessions, including partial sessions; it is kept separate from tracked app activity.
 
-MoodPet saves an active focus checkpoint approximately every five seconds and on pause or completion. After a crash, the next launch offers to save the last observed time as a partial session or discard it. The time while MoodPet was closed is never added, and a partial session does not create a completion star or completion XP. Normal exit saves the session as partial. The timer starts afresh after either decision; up to the interval since the last checkpoint may be lost.
+MoodPet saves an active focus checkpoint approximately every five seconds and on pause or completion. After a crash, the next launch offers to save the last observed time as a partial session or discard it. The time while MoodPet was closed is never added, and a partial session does not create completion XP. Normal exit saves the session as partial. The timer starts afresh after either decision; up to the interval since the last checkpoint may be lost.
 
 The migration adds local `tasks` and `focus_checkpoint` tables and a nullable task reference to `focus_sessions`. Existing history is preserved. A checkpoint is consumed and recorded in the same SQLite transaction, preventing a second recovery from creating duplicate sessions.
 
-## Grow a constellation
+## Your evolution journey
 
-Each saved completed session appears as a bright star in Focus journey. The view shows the most recent 100 completions; faint background points are decoration. Select a star to find its session, or use the keyboard-accessible list. Optional session intentions are stored locally and limited to 120 characters. Partial sessions remain in history and do not light stars. The existing history reset can remove today's sessions and therefore their stars; missing a day or taking a break does not.
+Focus journey now contains twenty stages: Seedling, Explorer, Builder, Warrior, Guardian, Master, Champion, Conqueror, Mythic, Legend, Pioneer, Navigator, Artificer, Sentinel, Sage, Luminary, Ascendant, Celestial, Eternal, and Infinity. Each stage has ten levels. Complete level 10 to enter the next stage. Stage entry equips a unique cosmetic; entering levels 4 and 7 adds visor and orbit details. Ivory/lavender appearance choices remain available.
 
-Daily-goal time, completion streaks, and XP retain explicit meanings. Timer-only goals use saved manual-session durations (including partial sessions), excluding pauses. Automatic goals use productive app time. XP remains one point per tracked productive minute plus 25 per completion; timer-only users still earn completion XP.
+Use the stage picker to explore environments and upcoming rewards. Completed and current nodes accept clicks or keyboard focus/Space to show details; future nodes remain locked. **My stage** returns to your current world. The side pet and desktop pet share the same persistent evolution state. Reduced motion stops animation loops and celebrations; quiet mode suppresses all speech.
+
+Level costs start at 50 XP and increase by 2 XP per global level. XP remains one point per tracked productive minute plus 25 per completed session, including existing automatic completions. A completed task adds 10 XP once for that task; reopening it never grants another reward. Goals and achievements do not add overlapping XP bonuses. Manual partial sessions keep their existing zero-completion-reward behavior. The new reward ledger preserves XP and unlocked cosmetics independently of deletable daily history. All 200 levels require 49,800 XP; XP keeps accumulating after Infinity 10.
+
+Existing XP is migrated once from the old calculation and old completed sessions are marked as already credited. Users upgrading from the 100-level journey keep their earned XP balance, unlocked levels and approximately the same within-level progress through a separate, one-time curve adjustment. This adjustment is shown in the XP-bar tooltip and does not add work rewards. The original completed-session history, dates and notes remain intact; your latest 100 completions appear beneath the map. Optional intentions remain limited to 120 characters. Missed days never remove earned XP, cosmetics or achievements. Explicit history reset still removes today's session records and affects streaks, but no longer removes earned XP or achievements.
+
+Timer-only goals still use saved manual-session durations (including partial sessions), excluding pauses. Automatic goals use productive app time. These time measures remain separate.
+
+## Focus charts and streak care
+
+The Overview chart and 12-week calendar now share an explicit time-source selector. Timer-only mode shows saved focus timers by default. Pink/red/chocolate intensity increases through 30 minutes, 1h, 2h, 4h and 6h+, with exact hover details. Any recorded focus time keeps the streak, including partial manual sessions; productive app activity also qualifies.
+
+**Streak care** offers two free, non-bankable repair tokens each calendar month. Select a missed past day from the last 30 days to protect it. Gold diamonds distinguish protection from work: no hours, sessions or XP are added. See [charts and streak care](CHARTS_AND_STREAKS.md) for eligibility and persistence details.
 
 ## Choose a tone
 

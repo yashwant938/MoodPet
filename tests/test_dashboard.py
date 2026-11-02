@@ -12,6 +12,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QCoreApplication, QEvent, QPoint, Qt
 from PySide6.QtTest import QSignalSpy, QTest
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app.config.settings import SettingsManager
@@ -64,6 +65,70 @@ class DashboardIntegrationTests(unittest.TestCase):
         dashboard.clock_timer.stop()
         return dashboard
 
+    def test_timer_only_charts_and_repair_button_show_real_data(self):
+        self.settings.set('tracking_mode','manual')
+        today=datetime.now().date()
+        before=today-timedelta(days=2)
+        self.db.record_focus_session(22200,end_time=datetime.combine(before,datetime.min.time())+timedelta(hours=12))
+        self.db.record_focus_session(12,completed=False)
+        dashboard=self.dashboard()
+        self.assertEqual(dashboard.measure_picker.currentData(),'manual')
+        self.assertEqual(sum(r['productive_seconds'] for r in dashboard.activity_chart._rows),22212)
+        self.assertIn('6h 10m saved focus time',dashboard.chart_summary.text())
+        self.assertIn('6h 10m of saved focus time',dashboard.badge_label.text())
+        dashboard.resize(960,640)
+        self.app.processEvents()
+        self.assertEqual(dashboard.pages.currentWidget().horizontalScrollBar().maximum(),0)
+        self.assertEqual(self.db.get_streaks()['current_streak'],1)
+        xp=self.db.get_evolution_snapshot()['progress'].xp
+        self.assertTrue(dashboard.repair_button.isEnabled())
+        dashboard.pages.currentWidget().ensureWidgetVisible(dashboard.repair_button)
+        self.app.processEvents()
+        QTest.mouseClick(dashboard.repair_button,Qt.LeftButton)
+        self.assertEqual(self.db.get_streaks()['current_streak'],3)
+        self.assertEqual(self.db.get_streak_repair_status()['remaining'],1)
+        self.assertEqual(self.db.get_evolution_snapshot()['progress'].xp,xp)
+        self.assertIn(today-timedelta(days=1),dashboard.heatmap.repaired_days)
+        dashboard.measure_picker.setCurrentIndex(1)
+        self.assertEqual(sum(r['productive_seconds'] for r in dashboard.activity_chart._rows),0)
+
+    def test_pet_menu_shows_current_task_and_separate_weekly_averages(self):
+        self.db.get_previous_week_totals = lambda: {
+            "start": datetime(2026, 10, 26).date(), "end": datetime(2026, 11, 1).date(),
+            "timer_seconds": 7 * 5400, "tracked_seconds": 7 * 7200,
+        }
+        idle = self.pet._create_context_menu()
+        texts = [a.text() for a in idle.actions()]
+        self.assertEqual(texts[:4], ["No focus session running", "Last week (26 Oct–01 Nov) · daily average",
+                         "Focus timers: 1h 30m / day", "Tracked productive: 2h 00m / day"])
+        self.assertTrue(all(not action.isEnabled() for action in idle.actions()[:4]))
+        dashboard = self.dashboard()
+        task_id = self.db.create_task("Research & design")
+        dashboard._refresh_tasks(task_id)
+        self.pet._start_focus_session(1500)
+        self.assertEqual(self.pet.session_task_id, task_id)
+        self.assertEqual(self.pet._create_context_menu().actions()[0].text(), "Focusing: Research && design")
+        self.db.update_task(task_id, name="Read papers")
+        self.pet._toggle_session_pause()
+        self.assertEqual(self.pet._create_context_menu().actions()[0].text(), "Paused: Read papers")
+        self.pet._stop_session()
+        self.pet._start_break_session(300)
+        self.assertEqual(self.pet._create_context_menu().actions()[0].text(), "Taking a break")
+        self.pet._toggle_session_pause()
+        self.assertEqual(self.pet._create_context_menu().actions()[0].text(), "Break paused")
+        self.pet._stop_session()
+        self.assertEqual(self.pet._create_context_menu().actions()[0].text(), "No focus session running")
+
+    def test_pet_menu_shows_focus_without_task_and_shortens_long_names(self):
+        dashboard = self.dashboard()
+        self.pet._start_focus_session(60)
+        self.assertEqual(self.pet._create_context_menu().actions()[0].text(), "Focusing: No task selected")
+        self.pet._stop_session()
+        task_id = self.db.create_task("Long " * 18)
+        dashboard._refresh_tasks(task_id)
+        self.pet._start_focus_session(60)
+        self.assertTrue(self.pet._create_context_menu().actions()[0].text().endswith("…"))
+
     def test_task_picker_attaches_completed_session_and_counts_time_once(self):
         dashboard = self.dashboard()
         dashboard.navigate(4)
@@ -83,6 +148,113 @@ class DashboardIntegrationTests(unittest.TestCase):
         self.assertEqual(self.db.get_tasks()[0]["focused_seconds"], 4)
         self.assertEqual(self.db.get_recent_sessions()[0]["task_name"], "Review a patch")
         self.assertEqual(self.db.get_today_stats()["focus_sessions_count"], 1)
+
+    def test_enter_adds_one_task_without_navigation_from_either_text_field(self):
+        dashboard = self.dashboard()
+        dashboard.navigate(4)
+        dashboard.task_name.setFocus()
+        QTest.keyClicks(dashboard.task_name, "Review patch")
+        QTest.keyClick(dashboard.task_name, Qt.Key_Return)
+        self.assertEqual(len(self.db.get_tasks()), 1)
+        self.assertEqual(dashboard.pages.currentIndex(), 4)
+        self.assertEqual(dashboard._selected_task_id(), self.db.get_tasks()[0]['id'])
+        QTest.keyClicks(dashboard.task_name, "Read docs")
+        dashboard.task_project.setFocus()
+        QTest.keyClicks(dashboard.task_project, "Systems")
+        QTest.keyClick(dashboard.task_project, Qt.Key_Return)
+        self.assertEqual(len(self.db.get_tasks()), 2)
+        self.assertEqual(dashboard.pages.currentIndex(), 4)
+        self.assertEqual(dashboard.task_picker.currentText(), "Systems / Read docs")
+
+    def test_mouse_add_and_focus_action_and_double_click_choose_correct_task(self):
+        dashboard = self.dashboard()
+        dashboard.navigate(4)
+        QTest.keyClicks(dashboard.task_name, "First task")
+        QTest.mouseClick(dashboard.add_task_button, Qt.LeftButton)
+        first = dashboard._selected_task_id()
+        self.assertIsNotNone(first)
+        self.assertTrue(dashboard.focus_task_button.isEnabled())
+        QTest.mouseClick(dashboard.focus_task_button, Qt.LeftButton)
+        self.assertEqual(dashboard.pages.currentIndex(), 1)
+        self.assertEqual(dashboard.task_picker.currentData(), first)
+        dashboard.navigate(4)
+        QTest.keyClicks(dashboard.task_name, "Second task")
+        QTest.mouseClick(dashboard.add_task_button, Qt.LeftButton)
+        second = dashboard._selected_task_id()
+        self.assertNotEqual(first, second)
+        # The original task moved to row 1; double-click that row.
+        cell = dashboard.tasks_table.visualItemRect(dashboard.tasks_table.item(1, 0)).center()
+        QTest.mouseClick(dashboard.tasks_table.viewport(), Qt.LeftButton, pos=cell)
+        QTest.mouseDClick(dashboard.tasks_table.viewport(), Qt.LeftButton, pos=cell)
+        self.app.processEvents()
+        self.assertEqual(dashboard.pages.currentIndex(), 1)
+        self.assertEqual(dashboard.task_picker.currentData(), first)
+
+    def test_refresh_preserves_task_popup_highlight_and_table_selection(self):
+        first = self.db.create_task("First")
+        self.db.create_task("Second")
+        dashboard = self.dashboard()
+        dashboard.navigate(4)
+        dashboard.tasks_table.selectRow(1)
+        dashboard.refresh()
+        self.assertEqual(dashboard._selected_task_id(), first)
+        dashboard.navigate(1)
+        dashboard.task_picker.showPopup()
+        self.app.processEvents()
+        view = dashboard.task_picker.view()
+        view.setCurrentIndex(dashboard.task_picker.model().index(dashboard.task_picker.findData(first), 0))
+        before = view.currentIndex().row()
+        dashboard.refresh()
+        self.assertTrue(view.isVisible())
+        self.assertEqual(view.currentIndex().row(), before)
+        third = self.db.create_task("Arrived while choosing")
+        dashboard.refresh()
+        self.assertEqual(view.currentIndex().row(), before)
+        self.assertEqual(dashboard.task_picker.findData(third), -1)
+        QTest.keyClick(view, Qt.Key_Return)
+        self.app.processEvents()
+        self.assertEqual(dashboard.task_picker.currentData(), first)
+        dashboard.refresh()
+        self.assertNotEqual(dashboard.task_picker.findData(third), -1)
+        self.assertEqual(dashboard.task_picker.currentData(), first)
+        self.assertEqual(dashboard._selected_task_id(), first)
+
+    def test_new_or_archived_task_cannot_replace_running_timer_task(self):
+        first = self.db.create_task("In progress")
+        dashboard = self.dashboard()
+        dashboard.navigate(1)
+        dashboard.task_picker.setCurrentIndex(dashboard.task_picker.findData(first))
+        self.pet._start_focus_session(60)
+        dashboard.navigate(4)
+        dashboard.task_name.setText("Next task")
+        QTest.mouseClick(dashboard.add_task_button, Qt.LeftButton)
+        self.assertFalse(dashboard.focus_task_button.isEnabled())
+        dashboard._focus_selected_task()  # Also guard a delayed double-click.
+        self.db.update_task(first, status='archived')
+        dashboard.refresh()
+        self.assertEqual(self.pet.session_task_id, first)
+        self.assertEqual(dashboard.task_picker.currentData(), first)
+        self.tick(2)
+        self.pet._stop_session()
+        self.assertEqual(self.db.get_recent_sessions()[0]['task_id'], first)
+
+    def test_task_and_intention_fields_are_readable_with_dark_system_palette(self):
+        original = self.app.palette()
+        dark = QPalette(original)
+        dark.setColor(QPalette.Base, QColor('#101010'))
+        dark.setColor(QPalette.Text, QColor('#eeeeee'))
+        self.app.setPalette(dark)
+        try:
+            dashboard = self.dashboard()
+            dashboard.navigate(4)
+            self.app.processEvents()
+            for field in (dashboard.task_name, dashboard.task_project, dashboard.session_note):
+                palette = field.palette()
+                self.assertEqual(palette.color(QPalette.Base).name(), '#ffffff')
+                self.assertEqual(palette.color(QPalette.Text).name(), '#20372d')
+                self.assertNotEqual(palette.color(QPalette.PlaceholderText), palette.color(QPalette.Base))
+        finally:
+            self.app.setPalette(original)
 
     def tick(self, elapsed, state=ProductivityState.PRODUCTIVE):
         """Advance only the integration clock; never read foreground apps."""
@@ -138,7 +310,11 @@ class DashboardIntegrationTests(unittest.TestCase):
         self.assertEqual(results, {"Completed", "Partial"})
         types = {dashboard.history_table.item(row, 2).text() for row in range(2)}
         self.assertEqual(types, {"Automatic", "Focus timer"})
-        self.assertIn("55 / 250 XP", dashboard.xp_label.text())
+        for _ in range(100):
+            if dashboard.evolution_controller.snapshot is not None:
+                break
+            QTest.qWait(10)
+        self.assertEqual(dashboard.xp_label.text(), "5 / 52 XP")
         self.assertFalse(dashboard.grab().isNull())
 
         dashboard.period_picker.setCurrentIndex(1)

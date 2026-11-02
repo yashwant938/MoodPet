@@ -12,7 +12,8 @@ from app.monitor.activity_tracker import ActivityTracker
 from app.productivity.score_engine import ProductivityEngine, ProductivityState
 from app.productivity.focus_tracker import FocusTracker
 from app.productivity.focus_session import FocusSessionManager
-from app.character.emotions import EmotionalStateEngine, EmotionalPose
+from app.character.emotions import EmotionalStateEngine, EmotionalPose, PetReactionState
+from app.ui.evolution_controller import EvolutionController
 from app.character.personality import CharacterPersonality
 from app.ui.character import HumanCharacterWidget
 from app.ui.speech_bubble import SpeechBubble
@@ -42,11 +43,11 @@ class PetWindow(QWidget):
         self._next_developer_message = 0
         self.focus_tracker = FocusTracker(self.db, target_milestone_sec=self.settings.get("focus_milestone_target_sec", 1800))
         self.emotion_engine = EmotionalStateEngine()
+        self.reactions = PetReactionState()
         self.focus_session_mgr = FocusSessionManager()
         self.dashboard = None
         self._last_tick = time.monotonic()
         self._next_speech = time.monotonic() + 300
-        self._celebration_until = 0
         self._shutdown_done = False
 
         # Window Flags & Transparency
@@ -85,7 +86,17 @@ class PetWindow(QWidget):
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
         self._apply_preferences()
+        self.evolution_controller = EvolutionController(db, self)
+        self.evolution_controller.changed.connect(self._evolution_changed)
+        self.evolution_controller.advanced.connect(self._evolution_advanced)
         QApplication.instance().aboutToQuit.connect(self.shutdown)
+
+    def _evolution_changed(self, snapshot):
+        self.character_widget.set_evolution(snapshot['progress'])
+
+    def _evolution_advanced(self, count):
+        self.reactions.react(EmotionalPose.CELEBRATING, time.monotonic(), 6)
+        self._say('A new level unlocked. Your companion is growing with you!')
 
     def update_pet_size(self):
         """Resizes companion widget based on scale settings."""
@@ -166,7 +177,7 @@ class PetWindow(QWidget):
         was_timed = self.focus_session_mgr.is_focus_active or self.focus_session_mgr.is_break_active
         session_info = self.focus_session_mgr.tick(elapsed_sec=elapsed)
         if session_info["focus_finished"]:
-            self._celebration_until = now + 8
+            self.reactions.react(EmotionalPose.LAUGHING, now, 4)
             self._say("Session complete! One more small win, saved. Time to stretch?", extra_seconds=3)
             self._checkpoint_focus()
             self.db.finish_checkpoint(completed=True)
@@ -185,7 +196,7 @@ class PetWindow(QWidget):
         # 4. Focus tracker stats tick
         focus_meta = self.focus_tracker.update(prod_state, elapsed_interval_sec=elapsed, record_sessions=not was_timed)
         if focus_meta["milestone_triggered"]:
-            self._celebration_until = now + 6
+            self.reactions.react(EmotionalPose.PROUD, now, 4)
             self._say(focus_meta["milestone_message"])
 
         # 5. Evaluate human emotional pose
@@ -202,7 +213,11 @@ class PetWindow(QWidget):
             pose = EmotionalPose.THINKING
 
         # 6. Apply pose to character
-        self.character_widget.set_pose(EmotionalPose.EXCITED if now < self._celebration_until else pose)
+        if self.focus_session_mgr.is_paused:
+            pose = EmotionalPose.THINKING
+        elif self.focus_session_mgr.is_focus_active:
+            pose = EmotionalPose.FOCUSED
+        self.character_widget.set_pose(self.reactions.resolve(pose, now))
 
         # 7. Periodic speech lines
         if now >= self._next_speech:
@@ -339,10 +354,7 @@ class PetWindow(QWidget):
             self.current_window = {}
         self._last_tick = time.monotonic()
         self.setWindowFlag(Qt.WindowStaysOnTopHint, bool(self.settings.get("always_on_top", True)))
-        if self.settings.get("animations_enabled", True):
-            self.character_widget.timer.start(16)
-        else:
-            self.character_widget.timer.stop()
+        self.character_widget.set_motion_enabled(self.settings.get('animations_enabled',True))
         self.focus_tracker.target_milestone_sec = self.settings.get("focus_milestone_target_sec", 1800)
 
     def shutdown(self):
@@ -353,9 +365,10 @@ class PetWindow(QWidget):
         self.typing_timer.stop()
         self._stop_session()
         self.focus_tracker.finish_current_session()
+        self.evolution_controller.close()
 
-    def _show_context_menu(self, pos):
-        """Right click context menu."""
+    def _create_context_menu(self):
+        """Build the pet menu using the current timer and locally saved history."""
         menu = QMenu(self)
         menu.setStyleSheet("""
             QMenu {
@@ -369,12 +382,42 @@ class PetWindow(QWidget):
                 background-color: #313244;
                 color: #CBA6F7;
             }
+            QMenu::item:disabled { color: #BAC5DE; }
         """)
 
+        session = self.focus_session_mgr
+        if session.is_focus_active:
+            name = self.db.get_task_name(self.session_task_id)
+            name = " ".join(name.split()) if name else ("Task unavailable" if self.session_task_id is not None else "No task selected")
+            name = name if len(name) <= 46 else name[:45] + "…"
+            status = "Paused" if session.is_paused else "Focusing"
+            status_text = f"{status}: {name}".replace("&", "&&")
+        elif session.is_break_active:
+            status_text = "Break paused" if session.is_paused else "Taking a break"
+        else:
+            status_text = "No focus session running"
+        status = menu.addAction(status_text)
+        status.setEnabled(False)
+
+        week = self.db.get_previous_week_totals()
+        dates = f"{week['start'].strftime('%d %b')}–{week['end'].strftime('%d %b')}"
+        heading = menu.addAction(f"Last week ({dates}) · daily average")
+        heading.setEnabled(False)
+        def average(total):
+            minutes = (total + 210) // 420  # nearest minute, averaged over seven days
+            return f"{minutes // 60}h {minutes % 60:02d}m / day"
+        for title, seconds in (("Focus timers", week['timer_seconds']), ("Tracked productive", week['tracked_seconds'])):
+            action = menu.addAction(f"{title}: {average(seconds)}")
+            action.setEnabled(False)
+        menu.addSeparator()
+
         today = self.db.get_today_stats()
-        prod_fmt = self.focus_tracker.format_time(today["productive_seconds"])
+        automatic = self.settings.get("tracking_mode", "manual") == "automatic"
+        seconds = today["productive_seconds"] if automatic else self.db.get_timer_seconds_today()
+        prod_fmt = self.focus_tracker.format_time(seconds)
+        today_label = "Tracked today" if automatic else "Timer today"
         streak = self.focus_tracker.current_streak
-        stats_act = QAction(f"🔥 Streak: {streak} days  |  📊 Today: {prod_fmt}", menu)
+        stats_act = QAction(f"🔥 Streak: {streak} days  |  {today_label}: {prod_fmt}", menu)
         stats_act.setEnabled(False)
         menu.addAction(stats_act)
         menu.addSeparator()
@@ -398,7 +441,15 @@ class PetWindow(QWidget):
         exit_act.triggered.connect(QApplication.instance().quit)
         menu.addAction(exit_act)
 
-        menu.exec(QCursor.pos())
+        return menu
+
+    def _show_context_menu(self, pos):
+        """Right click context menu."""
+        menu = self._create_context_menu()
+        try:
+            menu.exec(QCursor.pos())
+        finally:
+            menu.deleteLater()
 
     def open_settings(self):
         dialog = SettingsDialog(self.settings, self.db, self.focus_tracker, parent=self)

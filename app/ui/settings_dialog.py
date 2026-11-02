@@ -249,7 +249,7 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(tab, "History")
 
     def _reset_today_stats(self):
-        reply = QMessageBox.question(self, "Confirm Reset", "Reset today's activity and delete today's session history? This can change your streak and XP. Earlier days are kept.", QMessageBox.Yes | QMessageBox.No)
+        reply = QMessageBox.question(self, "Confirm Reset", "Reset today's activity and delete today's session history? This can change your streak. Earned XP and achievements are kept.", QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
             parent = self.parent()
             if parent is not None and hasattr(parent, "focus_session_mgr"):

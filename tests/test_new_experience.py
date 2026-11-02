@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMenu
 from app.config.settings import SettingsManager
 from app.storage.database import DatabaseManager
@@ -124,7 +125,7 @@ class NewExperienceTests(unittest.TestCase):
         pet.close()
         pet.deleteLater()
 
-    def test_quick_actions_and_notes_reach_saved_constellation(self):
+    def test_quick_actions_and_notes_reach_saved_journey_history(self):
         pet = PetWindow(self.settings, self.db)
         pet.logic_timer.stop()
         pet.typing_timer.stop()
@@ -139,6 +140,10 @@ class NewExperienceTests(unittest.TestCase):
                 pet.focus_session_mgr.focus_remaining_sec = 0
                 pet._on_logic_tick()
                 pet.dashboard.refresh()
+                for _ in range(100):
+                    if pet.dashboard.journey.list.count() == 1:
+                        break
+                    QTest.qWait(10)
                 self.assertEqual(pet.dashboard.journey.list.count(), 1)
                 self.assertEqual(self.db.get_journey_sessions()[0]["note"], "One small fix")
                 self.assertEqual(self.db.get_today_stats()["productive_seconds"], 0)

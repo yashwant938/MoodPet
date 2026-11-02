@@ -6,6 +6,117 @@ class AccessoryPainter:
     """Renders accessories matching the exact reference specification image."""
 
     @staticmethod
+    def draw_evolution(painter, stage, minor, color, phase):
+        """Ten original stage silhouettes; no sprite or platform emoji dependency."""
+        painter.save()
+        painter.setPen(QPen(QColor(color), 2))
+        painter.setBrush(QColor(color))
+        if stage == 0:
+            painter.drawLine(0,-34,0,-45)
+            painter.drawEllipse(QRectF(0,-49,12,7))
+        elif stage == 1:
+            painter.drawRoundedRect(QRectF(31,-14,16,29),5,5)
+            painter.setPen(QPen(QColor('#86664F'),3)); painter.drawLine(32,-8,44,-8)
+        elif stage == 2:
+            painter.drawPie(QRectF(-29,-50,58,30),0,180*16)
+            painter.drawRoundedRect(QRectF(-33,-38,66,6),3,3)
+            painter.setPen(QPen(QColor('#FFF3D9'),3)); painter.drawLine(0,-48,0,-37)
+        elif stage == 3:
+            for x in (-44,32):
+                painter.drawRoundedRect(QRectF(x,-2,12,17),4,4)
+            painter.drawEllipse(QRectF(-5,-44,10,12))
+        elif stage == 4:
+            path=QPainterPath(QPointF(32,-5))
+            for x,y in ((49,0),(46,18),(39,24),(30,14)):
+                path.lineTo(x,y)
+            path.closeSubpath(); painter.drawPath(path)
+            painter.setPen(QPen(QColor('white'),2)); painter.drawLine(39,2,39,15)
+        elif stage == 5:
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRoundedRect(QRectF(-38,-39,76,70),33,30)
+            painter.drawLine(-15,-36,0,-53); painter.drawLine(0,-53,15,-36)
+        elif stage == 6:
+            for sign in (-1,1):
+                for i in range(4):
+                    painter.drawEllipse(QRectF(sign*(20+i*5)-4,-39+i*7,9,5))
+        elif stage == 7:
+            for sign in (-1,1):
+                path=QPainterPath(QPointF(sign*34,10))
+                for x,y in ((57,-25),(51,8),(40,22)):
+                    path.lineTo(sign*x,y)
+                path.closeSubpath(); painter.drawPath(path)
+        elif stage == 8:
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(QRectF(-28,-54,56,12))
+            painter.drawEllipse(QPointF(math.cos(phase)*28,-48+math.sin(phase)*5),3,3)
+        elif stage == 9:
+            path=QPainterPath(QPointF(-24,-36))
+            for x,y in ((-27,-52),(-12,-44),(0,-58),(12,-44),(27,-52),(24,-36)):
+                path.lineTo(x,y)
+            path.closeSubpath(); painter.drawPath(path)
+            painter.setBrush(QColor('white')); painter.drawEllipse(QPointF(0,-43),3,3)
+        elif stage == 10:
+            painter.drawRoundedRect(QRectF(-28,18,56,8),3,3)
+            path=QPainterPath(QPointF(20,20)); path.lineTo(42,32); path.lineTo(32,36); path.lineTo(16,24); path.closeSubpath()
+            painter.drawPath(path)
+        elif stage == 11:
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRoundedRect(QRectF(-30,-20,60,17),7,7)
+            painter.drawEllipse(QPointF(19,-11),5,5)
+            painter.drawLine(19,-18,19,-4)
+        elif stage == 12:
+            for sign in (-1,1):
+                painter.drawRoundedRect(QRectF(sign*42-8,-4,16,21),5,5)
+                painter.setPen(QPen(QColor('white'),1.5)); painter.drawLine(sign*42,-1,sign*42,10)
+                painter.setPen(QPen(QColor(color),2))
+        elif stage == 13:
+            for sign in (-1,1):
+                path=QPainterPath(QPointF(sign*12,-34))
+                path.lineTo(sign*21,-55); path.lineTo(sign*28,-34); path.closeSubpath(); painter.drawPath(path)
+        elif stage == 14:
+            painter.drawRoundedRect(QRectF(33,-12,16,32),3,3)
+            painter.setPen(QPen(QColor('#F8F0D5'),4))
+            painter.drawLine(32,-12,50,-12); painter.drawLine(32,20,50,20)
+            painter.setPen(QPen(QColor('#476F53'),1.5)); painter.drawLine(37,-3,45,-3); painter.drawLine(37,3,45,3)
+        elif stage == 15:
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(QRectF(-20,-56,40,14))
+            for i in range(7):
+                angle=i*math.pi/6
+                painter.drawLine(QPointF(math.cos(angle)*26,-48-math.sin(angle)*15),QPointF(math.cos(angle)*33,-48-math.sin(angle)*20))
+        elif stage == 16:
+            for sign in (-1,1):
+                for i in range(3):
+                    path=QPainterPath(QPointF(sign*34,15-i*7))
+                    path.lineTo(sign*(54-i*5),-25-i*7); path.lineTo(sign*43,16-i*7); path.closeSubpath(); painter.drawPath(path)
+        elif stage == 17:
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(QRectF(-49,-16,98,30))
+            painter.drawEllipse(QRectF(-40,-25,80,48))
+            painter.setBrush(QColor(color)); painter.drawEllipse(QPointF(48,0),3,3)
+        elif stage == 18:
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(QRectF(-17,17,20,12)); painter.drawEllipse(QRectF(-3,17,20,12))
+            painter.drawEllipse(QRectF(-25,-50,50,10))
+        else:
+            path=QPainterPath(QPointF(-25,-35))
+            for x,y in ((-31,-50),(-16,-44),(-12,-57),(0,-45),(12,-57),(16,-44),(31,-50),(25,-35)):
+                path.lineTo(x,y)
+            path.closeSubpath(); painter.drawPath(path)
+            painter.setBrush(QColor('white'))
+            for x in (-12,0,12): painter.drawEllipse(QPointF(x,-39),2.5,2.5)
+        if minor >= 1:
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(color))
+            for x in (-20,0,20):
+                painter.drawEllipse(QPointF(x,23),1.8,1.8)
+        if minor >= 2:
+            for i in range(3):
+                angle=phase*0.7+i*math.tau/3
+                painter.drawEllipse(QPointF(math.cos(angle)*49,math.sin(angle)*33-6),2,2)
+        painter.restore()
+
+    @staticmethod
     def draw_red_headband(painter: QPainter, head_cx: float, head_cy: float):
         """Draws red headband with '集中' (Concentrate) text."""
         band_rect = QRectF(head_cx - 28, head_cy - 28, 56, 12)
