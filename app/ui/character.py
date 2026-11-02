@@ -8,15 +8,19 @@ from app.character.emotions import EmotionalPose
 from app.character.eye_tracking import EyeTracker
 from app.character.accessories import AccessoryPainter
 from app.ui.animations import AnimationManager
+from app.productivity.progression import progress_for
 
 class HumanCharacterWidget(QWidget):
     """Renders a glossy 3D AI Robot Companion matching the reference visual specification."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setAttribute(Qt.WA_TranslucentBackground)
         self.observe_activity = False
         self.companion_style = "orbit"
         self.pose = EmotionalPose.IDLE
+        self.evolution = progress_for(0)
+        self.motion_enabled = True
         self.eye_tracker = EyeTracker(lerp_speed=0.15)
         self.anim_mgr = AnimationManager()
 
@@ -33,19 +37,45 @@ class HumanCharacterWidget(QWidget):
         # Render loop ~60 FPS
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._on_tick)
-        self.timer.start(16)
+        self.timer.start(33)
+
+    def set_evolution(self, progress):
+        if self.evolution != progress:
+            self.evolution = progress
+            self.setAccessibleName(f'{progress.stage.name} companion, level {progress.level}')
+            self.update()
+
+    def set_motion_enabled(self, enabled):
+        self.motion_enabled = bool(enabled)
+        if enabled and self.isVisible():
+            self.timer.start(33)
+        else:
+            self.timer.stop()
+            self.anim_mgr.particles.clear()
+            self.anim_time = 0
+            self.is_blinking = False
+        self.update()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.motion_enabled:
+            self.timer.start(33)
+
+    def hideEvent(self, event):
+        self.timer.stop()
+        super().hideEvent(event)
 
     def set_pose(self, pose: EmotionalPose):
         if self.pose != pose:
             self.pose = pose
-            if pose in (EmotionalPose.EXCITED, EmotionalPose.CELEBRATION):
-                self.anim_mgr.trigger_confetti(self.width(), self.height())
+            if self.motion_enabled and pose in (EmotionalPose.EXCITED, EmotionalPose.CELEBRATION, EmotionalPose.CELEBRATING):
+                self.anim_mgr.trigger_confetti(150, 160)
             self.update()
 
     def set_typing(self, active: bool):
         self.is_typing = active
-        if active and random.random() < 0.15:
-            self.anim_mgr.trigger_typing_sparkle(self.width() / 2, self.height() / 2 + 18)
+        if self.motion_enabled and active and random.random() < 0.15:
+            self.anim_mgr.trigger_typing_sparkle(75, 98)
 
     def set_focus_mode(self, is_focus: bool, timer_text: str = ""):
         self.is_in_focus = is_focus
@@ -58,7 +88,7 @@ class HumanCharacterWidget(QWidget):
         self.update()
 
     def _on_tick(self):
-        dt = 0.016
+        dt = 0.033
         self.anim_time += dt
 
         # Update eye gaze + typing movement
@@ -78,15 +108,17 @@ class HumanCharacterWidget(QWidget):
                 self.blink_timer = 0.0
                 self.next_blink = random.uniform(2.5, 6.0)
 
-        self.anim_mgr.update(dt, self.width(), self.height(), self.pose.name)
+        self.anim_mgr.update(dt, 150, 160, self.pose.name)
         self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        w = self.width()
-        h = self.height()
+        scale = min(self.width()/150, self.height()/160)
+        painter.translate((self.width()-150*scale)/2,(self.height()-160*scale)/2)
+        painter.scale(scale,scale)
+        w, h = 150, 160
         cx = w / 2.0
         cy = h / 2.0 - 8.0 # Center offset
 
@@ -98,7 +130,7 @@ class HumanCharacterWidget(QWidget):
 
         if self.pose == EmotionalPose.ANGRY:
             shake_x = math.sin(self.anim_time * 28.0) * 3.5
-        elif self.pose in (EmotionalPose.EXCITED, EmotionalPose.CELEBRATION):
+        elif self.pose in (EmotionalPose.EXCITED, EmotionalPose.CELEBRATION, EmotionalPose.CELEBRATING, EmotionalPose.LAUGHING, EmotionalPose.HAPPY):
             bounce = abs(math.sin(self.anim_time * 7.0)) * 12.0
             float_y = -bounce
             if bounce < 2.0:
@@ -198,7 +230,7 @@ class HumanCharacterWidget(QWidget):
             painter.drawLine(int(eye_l.x() - 6), int(eye_l.y()), int(eye_l.x() + 6), int(eye_l.y()))
             painter.drawLine(int(eye_r.x() - 6), int(eye_r.y()), int(eye_r.x() + 6), int(eye_r.y()))
 
-        elif self.pose in (EmotionalPose.HAPPY, EmotionalPose.CELEBRATION):
+        elif self.pose in (EmotionalPose.HAPPY, EmotionalPose.CELEBRATION, EmotionalPose.CELEBRATING, EmotionalPose.LAUGHING, EmotionalPose.PROUD, EmotionalPose.BREAK):
             # Curved happy LED eyes ^^
             path_l = QPainterPath()
             path_l.moveTo(eye_l.x() - 7, eye_l.y() + 2)
@@ -215,6 +247,13 @@ class HumanCharacterWidget(QWidget):
             path_m.moveTo(-5, 4)
             path_m.quadTo(0, 10, 5, 4)
             painter.drawPath(path_m)
+            if self.pose in (EmotionalPose.LAUGHING, EmotionalPose.CELEBRATING):
+                painter.setBrush(led_color)
+                painter.drawEllipse(QRectF(-6,3,12,9))
+                painter.setBrush(Qt.NoBrush)
+            elif self.pose == EmotionalPose.PROUD:
+                painter.drawLine(-18,-18,-7,-20)
+                painter.drawLine(7,-20,18,-18)
 
         elif self.pose == EmotionalPose.EXCITED:
             # Star eyes ★ ★
@@ -281,6 +320,9 @@ class HumanCharacterWidget(QWidget):
 
         if self.pose == EmotionalPose.CELEBRATION:
             AccessoryPainter.draw_glowsticks(painter, 0, 5, self.anim_time)
+
+        AccessoryPainter.draw_evolution(painter, self.evolution.stage_index, self.evolution.minor_upgrade,
+                                        self.evolution.stage.color, self.anim_time)
 
         painter.restore()
 

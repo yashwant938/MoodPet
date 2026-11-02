@@ -283,7 +283,11 @@ class DashboardIntegrationTests(unittest.TestCase):
         self.assertEqual(results, {"Completed", "Partial"})
         types = {dashboard.history_table.item(row, 2).text() for row in range(2)}
         self.assertEqual(types, {"Automatic", "Focus timer"})
-        self.assertIn("55 / 250 XP", dashboard.xp_label.text())
+        for _ in range(100):
+            if dashboard.evolution_controller.snapshot is not None:
+                break
+            QTest.qWait(10)
+        self.assertEqual(dashboard.xp_label.text(), "3 / 29 XP")
         self.assertFalse(dashboard.grab().isNull())
 
         dashboard.period_picker.setCurrentIndex(1)

@@ -2,6 +2,7 @@ import sys
 import os
 import argparse
 import tempfile
+import hashlib
 from pathlib import Path
 from PySide6.QtCore import Qt, QSharedMemory
 from PySide6.QtGui import QIcon, QAction, QPixmap, QPainter, QColor
@@ -66,7 +67,10 @@ def main():
     app.setApplicationName("MoodPet")
 
     # Single Instance Guard
-    shared_mem = QSharedMemory("MoodPetSingleInstanceKey")
+    instance_key = "MoodPetSingleInstanceKey"
+    if profile is not None:
+        instance_key += hashlib.sha256(str(profile.resolve()).encode()).hexdigest()[:20]
+    shared_mem = QSharedMemory(instance_key)
     if not shared_mem.create(1):
         print("MoodPet is already running!")
         sys.exit(0)
@@ -75,10 +79,8 @@ def main():
     settings = SettingsManager(profile / "config.json" if profile else None)
     db = DatabaseManager(profile / "moodpet.db" if profile else None)
     if args.demo:
-        settings.set("onboarding_complete", True)
-        settings.set("tracking_mode", "manual")
-        for minutes, note in [(25, "Learn a C++ concept"), (15, "Read a chapter"), (30, "Test one small fix")]:
-            db.record_focus_session(minutes * 60, note=note)
+        from app.demo import populate_demo
+        populate_demo(db, settings)
     if not settings.get("onboarding_complete", False):
         if WelcomeDialog(settings).exec() != WelcomeDialog.Accepted:
             return
