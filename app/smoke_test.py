@@ -34,7 +34,8 @@ def run():
                 break
             QTest.qWait(10)
         assert dashboard.journey.list.count() == 1
-        assert dashboard.journey.map.nodes[1].isEnabled()
+        assert dashboard.journey.map.nodes[0].isEnabled()
+        assert not dashboard.journey.map.nodes[1].isEnabled()
         assert not dashboard.mini_pet.observe_activity
         assert not dashboard.grab().isNull()
         # Exercise the same keyboard/mouse paths as the installed application.

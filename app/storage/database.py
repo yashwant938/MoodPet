@@ -383,7 +383,7 @@ class DatabaseManager:
         with self._connection(notify=False) as conn:
             conn.execute('BEGIN IMMEDIATE' if claim_unlocks else 'BEGIN')
             row = conn.execute('SELECT * FROM pet_progress WHERE singleton=1').fetchone()
-            progress = progress_for(int(row['xp']))
+            progress = progress_for(int(row['xp']), credit=int(row['curve_credit']))
             advance = max(0, progress.completed - row['seen_level'])
             if claim_unlocks and advance:
                 conn.execute('UPDATE pet_progress SET seen_level=? WHERE singleton=1', (progress.completed,))

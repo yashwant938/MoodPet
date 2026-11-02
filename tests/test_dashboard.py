@@ -287,7 +287,7 @@ class DashboardIntegrationTests(unittest.TestCase):
             if dashboard.evolution_controller.snapshot is not None:
                 break
             QTest.qWait(10)
-        self.assertEqual(dashboard.xp_label.text(), "3 / 29 XP")
+        self.assertEqual(dashboard.xp_label.text(), "5 / 52 XP")
         self.assertFalse(dashboard.grab().isNull())
 
         dashboard.period_picker.setCurrentIndex(1)

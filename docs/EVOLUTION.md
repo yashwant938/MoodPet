@@ -2,18 +2,22 @@
 
 ## Rules and migration
 
-`app/productivity/progression.py` is the single definition of stages, cosmetics and the version-one curve. Global levels 1–100 map to ten local levels in each of ten stages. Completing global level `n` costs `25 + 2 × (n − 1)` XP; completing `n` levels requires `25n + n(n − 1)` lifetime XP. Stage transitions occur after completing levels 10, 20, and so on. Completing all 100 costs 12,400 XP (496 completed-session rewards, before productive-minute and task rewards). Costs are configurable through the typed rules object; changing the released curve requires an explicit future migration.
+`app/productivity/progression.py` is the single definition of stages, cosmetics and the version-two curve. Global levels 1–200 map to ten local levels in each of twenty stages. Completing global level `n` costs `50 + 2 × (n − 1)` XP; completing `n` levels requires `50n + n(n − 1)` lifetime XP. Stage transitions occur after completing levels 10, 20, and so on. Completing all 200 costs 49,800 XP (1,992 completed-session rewards, before productive-minute and task rewards). Costs are configurable through the typed rules object; changing the released curve requires an explicit future migration.
 
-The old UI used `floor(productive_seconds / 60) + 25 × completed_sessions` and `floor(XP / 250) + 1`. Migration snapshots exactly that XP balance from existing daily aggregates. The new curve places a user at or above their previous global level, capped at the map's 100-level display; users above that cap enter mastered Legend and retain all XP. The original migration event retains their legacy balance. All original session rows and notes remain. Historical completed sessions and already-completed tasks are marked as credited, preventing replay. An existing active task can earn its first new task reward after upgrade.
+The old UI used `floor(productive_seconds / 60) + 25 × completed_sessions` and `floor(XP / 250) + 1`. Migration snapshots exactly that XP balance from existing daily aggregates. The new curve places a user at or above their previous global level, capped at the map's 200-level display; users above that cap enter mastered Infinity and retain all XP. The original migration event retains their legacy balance. All original session rows and notes remain. Historical completed sessions and already-completed tasks are marked as credited, preventing replay. An existing active task can earn its first new task reward after upgrade.
 
 The additive, transactional SQLite migration creates:
 
 - `pet_progress`: decimal-text XP and a monotonically increasing productive-seconds counter, plus the last acknowledged completed level.
 - `reward_events`: unique event identifiers such as `session:42` and `task:7`, reward kind, XP and local timestamp.
-- `evolution_unlocks`: the persistent set of completed levels, up to 100.
+- `evolution_unlocks`: the persistent set of completed levels, up to 200.
 - `earned_achievements`: permanent records of the four existing milestones.
 
 Decimal-text XP plus Python integers allow continued accumulation beyond SQLite's signed 64-bit integer range. The UI caps progress bars and formats very large totals compactly.
+
+## Upgrading from the 100-level journey
+
+Curve version two starts each level at 50 XP rather than 25 XP, still increasing by 2 XP per global level. New stages extend the map to 200 levels. Migration adds `curve_version` and decimal-text `curve_credit` to `pet_progress`. It retains the earned XP value exactly and calculates a one-time separate progress adjustment that preserves the old completed level and its within-level fraction (rounded down to the nearest XP). Old Legend mastery becomes access to Pioneer and overflow XP continues forward. Restarting never reapplies the adjustment or replays unlock animations. Reward-event XP remains unchanged; only the progress calculation uses earned XP plus the saved adjustment.
 
 ## Reward lifecycle
 
