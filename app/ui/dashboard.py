@@ -94,7 +94,10 @@ QPushButton#primary { background: #237A57; color: white; border: none; padding: 
 QPushButton#primary:hover { background: #196643; }
 QPushButton#primary:disabled { background: #AEC7B8; }
 QPushButton#stop { color: #AD614D; }
-QComboBox, QSpinBox { background: white; border: 1px solid #DAE3DC; border-radius: 8px; padding: 7px 10px; }
+QComboBox, QSpinBox, QLineEdit { background: white; color: #20372D; border: 1px solid #DAE3DC; border-radius: 8px; padding: 7px 10px; selection-background-color: #DDF3E5; selection-color: #193C2E; }
+QLineEdit { placeholder-text-color: #64766B; }
+QLineEdit:focus { border: 1px solid #237A57; }
+QSpinBox QLineEdit { background: transparent; border: none; border-radius: 0; padding: 0; }
 QComboBox QAbstractItemView { background: white; color: #20372D; selection-background-color: #E6F4EA; }
 QComboBox::drop-down { border: none; width: 24px; }
 QComboBox::down-arrow { image: url(__ASSET_DIR__/chevron-down.svg); width: 10px; height: 10px; }
@@ -206,6 +209,11 @@ class Dashboard(QDialog):
         self.journey = JourneyPanel()
         journey_layout.addWidget(self.journey)
         self._build_tasks()
+        # This is a multi-page window, not a confirmation dialog. Enter in a
+        # field must not activate a navigation button on another page.
+        for button in self.findChildren(QPushButton):
+            button.setAutoDefault(False)
+            button.setDefault(False)
 
     def _page(self):
         page = QWidget()
@@ -442,30 +450,47 @@ class Dashboard(QDialog):
         self.task_name.setMaxLength(100)
         self.task_name.setPlaceholderText("Task name")
         self.task_name.setAccessibleName("New task name")
+        self.task_name.returnPressed.connect(self._add_task)
         self.task_project = QLineEdit()
         self.task_project.setMaxLength(100)
         self.task_project.setPlaceholderText("Project (optional)")
         self.task_project.setAccessibleName("Optional project name")
+        self.task_project.returnPressed.connect(self._add_task)
         self.task_estimate = QSpinBox()
         self.task_estimate.setRange(0, 10000)
         self.task_estimate.setSuffix(" min estimate")
         self.task_estimate.setAccessibleName("Task estimate in minutes")
-        add = QPushButton("Add task")
-        add.clicked.connect(self._add_task)
-        for widget in (self.task_name, self.task_project, self.task_estimate, add):
+        self.add_task_button = QPushButton("Add task")
+        self.add_task_button.clicked.connect(self._add_task)
+        for widget in (self.task_name, self.task_project):
             row.addWidget(widget)
         box.addLayout(row)
+        estimate_row = QHBoxLayout()
+        estimate_row.addWidget(self.task_estimate)
+        estimate_row.addStretch()
+        estimate_row.addWidget(self.add_task_button)
+        box.addLayout(estimate_row)
         self.tasks_table = QTableWidget(0, 5)
         self.tasks_table.setHorizontalHeaderLabels(["TASK", "PROJECT", "ESTIMATE", "FOCUSED", "STATUS"])
         self.tasks_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.tasks_table.verticalHeader().setVisible(False)
         self.tasks_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tasks_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tasks_table.setSelectionMode(QTableWidget.SingleSelection)
+        self.tasks_table.itemDoubleClicked.connect(self._focus_selected_task)
         self.tasks_table.setMinimumHeight(260)
         box.addWidget(self.tasks_table)
         self.task_empty = label("No tasks yet. Add one above, or focus without a task.", "muted")
         box.addWidget(self.task_empty)
+        self.task_hint = label("Select a task, then choose Focus on this task. Double-click works too.", "muted")
+        self.task_hint.setWordWrap(True)
+        box.addWidget(self.task_hint)
         actions = QHBoxLayout()
+        self.focus_task_button = QPushButton("Focus on this task")
+        self.focus_task_button.setObjectName("primary")
+        self.focus_task_button.clicked.connect(self._focus_selected_task)
+        self.focus_task_button.setEnabled(False)
+        box.addWidget(self.focus_task_button, 0, Qt.AlignLeft)
         self.task_action_buttons = []
         for title, handler in (("Rename", self._rename_task), ("Mark complete", lambda: self._set_task_status('completed')),
                                ("Archive", lambda: self._set_task_status('archived')), ("Reopen", lambda: self._set_task_status('active'))):
@@ -475,9 +500,20 @@ class Dashboard(QDialog):
             self.task_action_buttons.append(button)
             actions.addWidget(button)
         self.tasks_table.itemSelectionChanged.connect(self._update_task_actions)
+        self.tasks_table.currentCellChanged.connect(self._update_task_actions)
         box.addLayout(actions)
         layout.addWidget(frame)
         layout.addStretch()
+
+    def keyPressEvent(self, event):
+        # Keep Enter usable on a deliberately focused button without allowing
+        # QDialog to pick an unrelated default button for text inputs.
+        focused = self.focusWidget()
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter) and isinstance(focused, QPushButton) and focused.isEnabled():
+            focused.click()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def _add_task(self):
         try:
@@ -489,15 +525,37 @@ class Dashboard(QDialog):
         self.task_project.clear()
         self.task_estimate.setValue(0)
         self._refresh_tasks(task_id)
+        self.task_name.setFocus()
 
     def _selected_task_id(self):
-        item = self.tasks_table.item(self.tasks_table.currentRow(), 0)
+        rows = self.tasks_table.selectionModel().selectedRows()
+        item = self.tasks_table.item(rows[0].row(), 0) if rows else None
         return item.data(Qt.UserRole) if item else None
 
-    def _update_task_actions(self):
-        enabled = self._selected_task_id() is not None
-        for button in self.task_action_buttons:
+    def _update_task_actions(self, *args):
+        task = next((row for row in getattr(self, "_task_rows", []) if row['id'] == self._selected_task_id()), None)
+        active_timer = self.session.is_focus_active or self.session.is_break_active
+        status = task['status'] if task else None
+        self.focus_task_button.setEnabled(status == 'active' and not active_timer)
+        for button, enabled in zip(self.task_action_buttons, (task is not None, status == 'active', task is not None and status != 'archived', task is not None and status != 'active')):
             button.setEnabled(enabled)
+        self.task_hint.setText("End the current timer before choosing another focus task." if active_timer else
+                               "Reopen this task to focus on it again." if task and status != 'active' else
+                               "Select a task, then choose Focus on this task. Double-click works too.")
+
+    def _focus_selected_task(self, *args):
+        if self.session.is_focus_active or self.session.is_break_active:
+            return
+        task_id = self._selected_task_id()
+        if task_id is None:
+            return
+        self._refresh_tasks()
+        index = self.task_picker.findData(task_id)
+        if index < 0:
+            return
+        self.task_picker.setCurrentIndex(index)
+        self.navigate(1)
+        self.start_focus_button.setFocus()
 
     def _rename_task(self):
         task_id = self._selected_task_id()
@@ -519,27 +577,45 @@ class Dashboard(QDialog):
             self._refresh_tasks()
 
     def _refresh_tasks(self, selected=None):
-        selected = self.task_picker.currentData() if selected is None else selected
-        table_selection = self._selected_task_id()
+        table_selection = self._selected_task_id() if selected is None else selected
+        picker_selection = self.task_picker.currentData() if selected is None else selected
         tasks = self.db.get_tasks()
-        self.task_picker.blockSignals(True)
-        self.task_picker.clear()
-        self.task_picker.addItem("No task · just focus", None)
-        self.tasks_table.setRowCount(len(tasks))
+        active_timer = self.session.is_focus_active or self.session.is_break_active
+        entries = [("No task · just focus", None)] + [
+            (f"{task['project']} / {task['name']}" if task['project'] else task['name'], task['id'])
+            for task in tasks if task['status'] == 'active']
+        current_entries = [(self.task_picker.itemText(i), self.task_picker.itemData(i)) for i in range(self.task_picker.count())]
+        # Never reset the user's highlighted popup row or the running timer's
+        # displayed task. Defer changed choices to a later idle refresh.
+        if not active_timer and not self.task_picker.view().isVisible():
+            if entries != current_entries:
+                self.task_picker.blockSignals(True)
+                self.task_picker.clear()
+                for text, task_id in entries:
+                    self.task_picker.addItem(text, task_id)
+                self.task_picker.setCurrentIndex(max(0, self.task_picker.findData(picker_selection)))
+                self.task_picker.blockSignals(False)
+            elif selected is not None:
+                self.task_picker.setCurrentIndex(max(0, self.task_picker.findData(picker_selection)))
         self.task_empty.setVisible(not tasks)
-        for index, task in enumerate(tasks):
-            if task['status'] == 'active':
-                self.task_picker.addItem(f"{task['project']} / {task['name']}" if task['project'] else task['name'], task['id'])
-            values = (task['name'], task['project'] or '—', duration(task['estimate_seconds']) if task['estimate_seconds'] else '—', duration(task['focused_seconds']), task['status'].title())
-            for col, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if col == 0:
-                    item.setData(Qt.UserRole, task['id'])
-                self.tasks_table.setItem(index, col, item)
-            if task['id'] == table_selection:
-                self.tasks_table.selectRow(index)
-        self.task_picker.setCurrentIndex(max(0, self.task_picker.findData(selected)))
-        self.task_picker.blockSignals(False)
+        if tasks != getattr(self, "_task_rows", None):
+            self._task_rows = tasks
+            scroll = self.tasks_table.verticalScrollBar().value()
+            self.tasks_table.blockSignals(True)
+            self.tasks_table.clearSelection()
+            self.tasks_table.setRowCount(len(tasks))
+            for index, task in enumerate(tasks):
+                values = (task['name'], task['project'] or '—', duration(task['estimate_seconds']) if task['estimate_seconds'] else '—', duration(task['focused_seconds']), task['status'].title())
+                for col, value in enumerate(values):
+                    item = QTableWidgetItem(value)
+                    if col == 0:
+                        item.setData(Qt.UserRole, task['id'])
+                    self.tasks_table.setItem(index, col, item)
+                if task['id'] == table_selection:
+                    self.tasks_table.selectRow(index)
+            self.tasks_table.verticalScrollBar().setValue(scroll)
+            self.tasks_table.blockSignals(False)
+        self._update_task_actions()
 
     def _build_history(self):
         layout = self._page()
@@ -698,6 +774,7 @@ class Dashboard(QDialog):
         self.pause_button.setEnabled(active)
         self.session_note.setEnabled(not active)
         self.task_picker.setEnabled(not active)
+        self._update_task_actions()
         self.pause_button.setText("Resume" if paused else "Pause")
         self.stop_button.setEnabled(active)
         self.mini_pet.set_pose(EmotionalPose.BREAK if session.is_break_active else EmotionalPose.FOCUSED if session.is_focus_active else EmotionalPose.HAPPY)

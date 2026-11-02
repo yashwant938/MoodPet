@@ -19,7 +19,7 @@ Entering a keyword explicitly saves a rule for future matching window titles. Th
 
 ## Tasks and interrupted timers
 
-Open **Tasks** to add a task, an optional project label and estimate. Select a row to rename, complete, archive or reopen it. The Focus room lets you choose an active task, or focus without one. Task time is the sum of saved manual sessions, including partial sessions; it is kept separate from tracked app activity.
+Open **Tasks** to add a task, an optional project label and estimate. Press Enter in the task name or project field, or click **Add task**. Select a row to rename, complete, archive or reopen it. For an active task, **Focus on this task** (or a double-click) opens the Focus room with that task selected; click **Start focus** when ready. The Focus room also lets you choose an active task, or focus without one. Task time is the sum of saved manual sessions, including partial sessions; it is kept separate from tracked app activity.
 
 MoodPet saves an active focus checkpoint approximately every five seconds and on pause or completion. After a crash, the next launch offers to save the last observed time as a partial session or discard it. The time while MoodPet was closed is never added, and a partial session does not create a completion star or completion XP. Normal exit saves the session as partial. The timer starts afresh after either decision; up to the interval since the last checkpoint may be lost.
 

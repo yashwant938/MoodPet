@@ -22,7 +22,7 @@ Click the floating pet or tray icon to open your dashboard. Drag the pet to move
 - **Overview:** live activity charts for 7 or 30 days, a 12-week activity calendar, daily goal, streaks, focus balance, and tiny daily wins. Hover chart bars and calendar cells for exact details.
 - **Focus room:** preset or custom 1–180 minute sessions, pause/resume, and 5/10 minute breaks. Ending a session early saves it as partial. Timers pause after a long gap such as computer sleep.
 - **Session history:** your most recent 100 sessions, lifetime stats, achievement collection, and a 90-day CSV activity export.
-- **Tasks:** create tasks with an optional project and estimate, rename, complete, archive or reopen them. Select an active task in the Focus room or leave it unselected. Saved partial and completed manual sessions contribute to the task's focused time.
+- **Tasks:** enter a task name and press Enter or click Add task. Project and estimate are optional. Select an active row and click **Focus on this task** (or double-click the row), then choose your duration and click **Start focus**. You can also rename, complete, archive or reopen tasks. Focus without a task by choosing **No task · just focus** in the Focus room. Saved partial and completed manual sessions contribute to the task's focused time.
 - **Companion growth:** 1 XP for each productive minute and 25 XP for each completed session; every 250 XP gains a level. Progress is calculated from saved history.
 
 ## How tracking works

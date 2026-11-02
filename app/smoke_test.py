@@ -7,6 +7,8 @@ from pathlib import Path
 def run():
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
     from PySide6.QtWidgets import QApplication
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
     from app.config.settings import SettingsManager
     from app.storage.database import DatabaseManager
     from app.productivity.focus_session import FocusSessionManager
@@ -29,4 +31,19 @@ def run():
         assert dashboard.journey.list.count() == 1
         assert not dashboard.mini_pet.observe_activity
         assert not dashboard.grab().isNull()
+        # Exercise the same keyboard/mouse paths as the installed application.
+        dashboard.navigate(4)
+        dashboard.task_name.setFocus()
+        QTest.keyClicks(dashboard.task_name, "Keyboard task")
+        QTest.keyClick(dashboard.task_name, Qt.Key_Return)
+        assert dashboard.pages.currentIndex() == 4
+        assert len(db.get_tasks()) == 1
+        dashboard.task_name.setText("Mouse task")
+        QTest.mouseClick(dashboard.add_task_button, Qt.LeftButton)
+        assert len(db.get_tasks()) == 2
+        task_id = dashboard._selected_task_id()
+        assert task_id is not None
+        QTest.mouseClick(dashboard.focus_task_button, Qt.LeftButton)
+        assert dashboard.pages.currentIndex() == 1
+        assert dashboard.task_picker.currentData() == task_id
         dashboard.close()
