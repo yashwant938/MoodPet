@@ -17,6 +17,14 @@ Leave the keyword field blank to apply a temporary correction to that exact proc
 
 Entering a keyword explicitly saves a rule for future matching window titles. These user rules take priority over default app rules; the most recently saved matching rule wins. Neutral/break corrections are temporary. Remove saved rules under Preferences → Activity / tone. Captured titles are never automatically written to settings or history; a temporary title match stays in memory.
 
+## Tasks and interrupted timers
+
+Open **Tasks** to add a task, an optional project label and estimate. Select a row to rename, complete, archive or reopen it. The Focus room lets you choose an active task, or focus without one. Task time is the sum of saved manual sessions, including partial sessions; it is kept separate from tracked app activity.
+
+MoodPet saves an active focus checkpoint approximately every five seconds and on pause or completion. After a crash, the next launch offers to save the last observed time as a partial session or discard it. The time while MoodPet was closed is never added, and a partial session does not create a completion star or completion XP. Normal exit saves the session as partial. The timer starts afresh after either decision; up to the interval since the last checkpoint may be lost.
+
+The migration adds local `tasks` and `focus_checkpoint` tables and a nullable task reference to `focus_sessions`. Existing history is preserved. A checkpoint is consumed and recorded in the same SQLite transaction, preventing a second recovery from creating duplicate sessions.
+
 ## Grow a constellation
 
 Each saved completed session appears as a bright star in Focus journey. The view shows the most recent 100 completions; faint background points are decoration. Select a star to find its session, or use the keyboard-accessible list. Optional session intentions are stored locally and limited to 120 characters. Partial sessions remain in history and do not light stars. The existing history reset can remove today's sessions and therefore their stars; missing a day or taking a break does not.

@@ -22,6 +22,7 @@ Click the floating pet or tray icon to open your dashboard. Drag the pet to move
 - **Overview:** live activity charts for 7 or 30 days, a 12-week activity calendar, daily goal, streaks, focus balance, and tiny daily wins. Hover chart bars and calendar cells for exact details.
 - **Focus room:** preset or custom 1–180 minute sessions, pause/resume, and 5/10 minute breaks. Ending a session early saves it as partial. Timers pause after a long gap such as computer sleep.
 - **Session history:** your most recent 100 sessions, lifetime stats, achievement collection, and a 90-day CSV activity export.
+- **Tasks:** create tasks with an optional project and estimate, rename, complete, archive or reopen them. Select an active task in the Focus room or leave it unselected. Saved partial and completed manual sessions contribute to the task's focused time.
 - **Companion growth:** 1 XP for each productive minute and 25 XP for each completed session; every 250 XP gains a level. Progress is calculated from saved history.
 
 ## How tracking works
@@ -34,7 +35,7 @@ Automatic productive blocks of at least five minutes are saved once when the blo
 
 ## Saved locally
 
-Settings live in `%USERPROFILE%\.moodpet\config.json`; history lives in `%USERPROFILE%\.moodpet\moodpet.db`. Existing databases are upgraded in place. Streaks, XP, achievements, goals, and history survive restarting the app. Timers are not resumed after quitting; a running focus session is saved as partial on a normal exit. A forced process termination may lose the current unfinished session, while previously saved activity remains.
+Settings live in `%USERPROFILE%\.moodpet\config.json`; history lives in `%USERPROFILE%\.moodpet\moodpet.db`. Existing databases are upgraded in place. Streaks, XP, achievements, goals, and history survive restarting the app. On a normal exit a running focus session is saved as partial. If interrupted unexpectedly, choose on restart whether to save the last checkpoint as partial or discard it. The timer does not resume automatically, and closed, paused and sleep time are not counted. Up to approximately five seconds since the last checkpoint may be lost.
 
 The app reads foreground app names/window titles to classify activity and checks the time since your last input. It stores aggregate durations and session records locally, not window titles or keystrokes. Preferences lets you edit app rules and thresholds, choose quiet hours, and configure startup. Resetting today's statistics also deletes today's sessions, which may change your streak and XP.
 

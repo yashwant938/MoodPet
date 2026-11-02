@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QButtonGroup, QComboBox, QDialog, QFileDialog, QFrame, QGridLayout,
     QHBoxLayout, QHeaderView, QLabel, QMessageBox, QProgressBar, QPushButton,
     QScrollArea, QSpinBox, QStackedWidget, QTableWidget, QTableWidgetItem,
-    QLineEdit, QVBoxLayout, QWidget,
+    QLineEdit, QVBoxLayout, QWidget, QInputDialog,
 )
 
 from app.ui.charts import ActivityChart, ActivityHeatmap, GoalRing
@@ -159,9 +159,9 @@ class Dashboard(QDialog):
         side.addSpacing(32)
         self.nav_group = QButtonGroup(self)
         self.nav_buttons = []
-        for index, text in enumerate(("Overview", "Focus room", "Session history", "Focus journey")):
+        for index, text in enumerate(("Overview", "Focus room", "Session history", "Focus journey", "Tasks")):
             button = QPushButton(text)
-            button.setIcon(navigation_icon(("overview", "focus", "history", "overview")[index]))
+            button.setIcon(navigation_icon(("overview", "focus", "history", "overview", "history")[index]))
             button.setIconSize(QSize(18, 18))
             button.setCheckable(True)
             self.nav_group.addButton(button, index)
@@ -205,6 +205,7 @@ class Dashboard(QDialog):
         journey_layout = self._page()
         self.journey = JourneyPanel()
         journey_layout.addWidget(self.journey)
+        self._build_tasks()
 
     def _page(self):
         page = QWidget()
@@ -357,6 +358,9 @@ class Dashboard(QDialog):
         self.session_note.setPlaceholderText("Optional intention · e.g. fix one compiler bug")
         self.session_note.setAccessibleName("Optional session intention")
         box.addWidget(self.session_note)
+        self.task_picker = QComboBox()
+        self.task_picker.setAccessibleName("Optional focus task")
+        box.addWidget(self.task_picker)
         self.timer_status = label("READY WHEN YOU ARE", "eyebrow")
         self.timer_status.setAlignment(Qt.AlignCenter)
         box.addWidget(self.timer_status)
@@ -427,6 +431,116 @@ class Dashboard(QDialog):
         layout.addWidget(tip)
         layout.addStretch()
 
+    def _build_tasks(self):
+        layout = self._page()
+        layout.addWidget(label("A LITTLE AT A TIME", "eyebrow"))
+        layout.addWidget(label("Make space for your tasks.", "heading"))
+        layout.addWidget(label("Optional projects and estimates keep your focus sessions organized.", "muted"))
+        frame, box = card()
+        row = QHBoxLayout()
+        self.task_name = QLineEdit()
+        self.task_name.setMaxLength(100)
+        self.task_name.setPlaceholderText("Task name")
+        self.task_name.setAccessibleName("New task name")
+        self.task_project = QLineEdit()
+        self.task_project.setMaxLength(100)
+        self.task_project.setPlaceholderText("Project (optional)")
+        self.task_project.setAccessibleName("Optional project name")
+        self.task_estimate = QSpinBox()
+        self.task_estimate.setRange(0, 10000)
+        self.task_estimate.setSuffix(" min estimate")
+        self.task_estimate.setAccessibleName("Task estimate in minutes")
+        add = QPushButton("Add task")
+        add.clicked.connect(self._add_task)
+        for widget in (self.task_name, self.task_project, self.task_estimate, add):
+            row.addWidget(widget)
+        box.addLayout(row)
+        self.tasks_table = QTableWidget(0, 5)
+        self.tasks_table.setHorizontalHeaderLabels(["TASK", "PROJECT", "ESTIMATE", "FOCUSED", "STATUS"])
+        self.tasks_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.tasks_table.verticalHeader().setVisible(False)
+        self.tasks_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tasks_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tasks_table.setMinimumHeight(260)
+        box.addWidget(self.tasks_table)
+        self.task_empty = label("No tasks yet. Add one above, or focus without a task.", "muted")
+        box.addWidget(self.task_empty)
+        actions = QHBoxLayout()
+        self.task_action_buttons = []
+        for title, handler in (("Rename", self._rename_task), ("Mark complete", lambda: self._set_task_status('completed')),
+                               ("Archive", lambda: self._set_task_status('archived')), ("Reopen", lambda: self._set_task_status('active'))):
+            button = QPushButton(title)
+            button.clicked.connect(handler)
+            button.setEnabled(False)
+            self.task_action_buttons.append(button)
+            actions.addWidget(button)
+        self.tasks_table.itemSelectionChanged.connect(self._update_task_actions)
+        box.addLayout(actions)
+        layout.addWidget(frame)
+        layout.addStretch()
+
+    def _add_task(self):
+        try:
+            task_id = self.db.create_task(self.task_name.text(), self.task_project.text(), self.task_estimate.value() * 60)
+        except ValueError as error:
+            QMessageBox.warning(self, "Task needs a name", str(error))
+            return
+        self.task_name.clear()
+        self.task_project.clear()
+        self.task_estimate.setValue(0)
+        self._refresh_tasks(task_id)
+
+    def _selected_task_id(self):
+        item = self.tasks_table.item(self.tasks_table.currentRow(), 0)
+        return item.data(Qt.UserRole) if item else None
+
+    def _update_task_actions(self):
+        enabled = self._selected_task_id() is not None
+        for button in self.task_action_buttons:
+            button.setEnabled(enabled)
+
+    def _rename_task(self):
+        task_id = self._selected_task_id()
+        if task_id is None:
+            return
+        name, accepted = QInputDialog.getText(self, "Rename task", "Task name:", text=self.tasks_table.item(self.tasks_table.currentRow(), 0).text())
+        if accepted:
+            try:
+                self.db.update_task(task_id, name=name)
+            except ValueError as error:
+                QMessageBox.warning(self, "Task needs a name", str(error))
+                return
+            self._refresh_tasks(task_id)
+
+    def _set_task_status(self, status):
+        task_id = self._selected_task_id()
+        if task_id is not None:
+            self.db.update_task(task_id, status=status)
+            self._refresh_tasks()
+
+    def _refresh_tasks(self, selected=None):
+        selected = self.task_picker.currentData() if selected is None else selected
+        table_selection = self._selected_task_id()
+        tasks = self.db.get_tasks()
+        self.task_picker.blockSignals(True)
+        self.task_picker.clear()
+        self.task_picker.addItem("No task · just focus", None)
+        self.tasks_table.setRowCount(len(tasks))
+        self.task_empty.setVisible(not tasks)
+        for index, task in enumerate(tasks):
+            if task['status'] == 'active':
+                self.task_picker.addItem(f"{task['project']} / {task['name']}" if task['project'] else task['name'], task['id'])
+            values = (task['name'], task['project'] or '—', duration(task['estimate_seconds']) if task['estimate_seconds'] else '—', duration(task['focused_seconds']), task['status'].title())
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                if col == 0:
+                    item.setData(Qt.UserRole, task['id'])
+                self.tasks_table.setItem(index, col, item)
+            if task['id'] == table_selection:
+                self.tasks_table.selectRow(index)
+        self.task_picker.setCurrentIndex(max(0, self.task_picker.findData(selected)))
+        self.task_picker.blockSignals(False)
+
     def _build_history(self):
         layout = self._page()
         layout.addWidget(label("PROOF OF PROGRESS", "eyebrow"))
@@ -485,6 +599,7 @@ class Dashboard(QDialog):
         self.refresh_timer_state()
 
     def refresh(self):
+        self._refresh_tasks()
         self.journey.refresh(self.db)
         self.mini_pet.companion_style = self.settings.get("companion_style", "orbit")
         self.mini_pet.update()
@@ -555,7 +670,7 @@ class Dashboard(QDialog):
                 except (ValueError, TypeError):
                     return str(value or "—")
             values = [stamp(session["start_time"]), duration(session["duration_seconds"]),
-                      {"automatic": "Automatic", "legacy": "Earlier session"}.get(session.get("source"), "Focus timer"),
+                      {"automatic": "Automatic", "legacy": "Earlier session"}.get(session.get("source"), "Focus timer") + (" · " + session["task_name"] if session.get("task_name") else ""),
                       "Completed" if session["completed"] else "Partial", stamp(session["end_time"])]
             for j, value in enumerate(values):
                 item = QTableWidgetItem(value)
@@ -582,6 +697,7 @@ class Dashboard(QDialog):
             button.setEnabled(not active)
         self.pause_button.setEnabled(active)
         self.session_note.setEnabled(not active)
+        self.task_picker.setEnabled(not active)
         self.pause_button.setText("Resume" if paused else "Pause")
         self.stop_button.setEnabled(active)
         self.mini_pet.set_pose(EmotionalPose.BREAK if session.is_break_active else EmotionalPose.FOCUSED if session.is_focus_active else EmotionalPose.HAPPY)

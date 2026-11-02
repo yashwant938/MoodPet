@@ -1,0 +1,11 @@
+# Tasks and recovery: implementation notes
+
+The existing monotonic countdown is the source of observed manual focus time. It excludes pauses and discards large sleep gaps. At start and approximately every five seconds, on pause, stop and completion, the UI writes a bounded elapsed-time checkpoint to SQLite. It never reconstructs focus from the wall clock. On restart the user can save the checkpoint as a partial session, discard it, or postpone the decision. Shutdown saves a partial session normally. A crash can lose the last checkpoint interval; an uninterrupted timer is never silently resumed.
+
+The additive migration creates `tasks` and a single-row `focus_checkpoint` table, and adds nullable `task_id` to `focus_sessions`. Old rows remain valid. A task may have an optional project label and estimate; task time is derived from associated saved manual sessions. Historical rows survive task completion, archiving and renaming. Checkpoint consumption, session insertion, daily aggregate update and checkpoint deletion share one immediate transaction. Failed transactions leave the checkpoint available for another attempt. Existing XP awards and activity classification are unchanged.
+
+Session dates follow the local calendar date of the last checkpoint, including cross-midnight sessions. If the wall clock moves before the start, the checkpoint timestamp is clamped to its start; no wall-clock difference is added to elapsed time. Timers and records remain local and no window titles are added to storage.
+
+Known limitations: checkpoint and dashboard queries run synchronously on the Qt thread, so unusually slow storage can affect responsiveness. There is no timer resumption after recovery, task estimate editor, separate project management, pet accessory progression, weekly analytics, or configurable break reminder in this first increment. The existing manual timer and tracker still use their current behavior.
+
+To reproduce the dashboard screenshots with temporary fixture data, run `python scratch/render_dashboard.py`; `scratch/dashboard-tasks.png` shows the task screen. Use `python main.py --demo` for an interactive disposable profile. Neither command requires access to a real profile.
