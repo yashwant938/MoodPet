@@ -5,6 +5,9 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from threading import RLock
+from app.productivity.rewards import RewardService
+from app.productivity.progression import progress_for
 
 
 class DatabaseManager:
@@ -19,6 +22,8 @@ class DatabaseManager:
     def __init__(self, db_path=None):
         self.db_path = Path(db_path) if db_path is not None else Path.home() / ".moodpet" / "moodpet.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._listeners = set()
+        self._listener_lock = RLock()
         self._init_db()
 
     def _get_connection(self):
@@ -27,13 +32,31 @@ class DatabaseManager:
         return conn
 
     @contextmanager
-    def _connection(self):
+    def _connection(self, notify=True):
         conn = self._get_connection()
+        changed = False
         try:
             with conn:
                 yield conn
+            changed = bool(conn.total_changes)
         finally:
             conn.close()
+        if changed and notify:
+            with self._listener_lock:
+                callbacks = tuple(self._listeners)
+            for callback in callbacks:
+                try:
+                    callback()
+                except RuntimeError:
+                    self.unsubscribe_progress(callback)
+
+    def subscribe_progress(self, callback):
+        with self._listener_lock:
+            self._listeners.add(callback)
+
+    def unsubscribe_progress(self, callback):
+        with self._listener_lock:
+            self._listeners.discard(callback)
 
     def _init_db(self):
         """Upgrade existing installs in place without deleting history."""
@@ -93,6 +116,7 @@ class DatabaseManager:
                 updated TEXT NOT NULL, elapsed INTEGER NOT NULL, total INTEGER NOT NULL,
                 paused INTEGER NOT NULL, note TEXT NOT NULL, task_id INTEGER)""")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_focus_sessions_date ON focus_sessions(date)")
+            RewardService.migrate(conn)
 
     @staticmethod
     def _as_date(value=None):
@@ -149,6 +173,8 @@ class DatabaseManager:
                     idle_seconds = idle_seconds + ?
                 WHERE date = ?
             """, (*deltas, today_str))
+            if deltas[0]:
+                RewardService.tracked(conn, deltas[0])
 
     def record_focus_session(self, duration_seconds, completed=True, start_time=None, end_time=None, source="manual", note="", task_id=None):
         """Record one session and its aggregate in a single transaction.
@@ -181,6 +207,7 @@ class DatabaseManager:
                     longest_session_seconds = MAX(longest_session_seconds, ?)
                 WHERE date = ?
             """, (int(bool(completed)), duration, session_date))
+            RewardService.session(conn, cursor.lastrowid)
             return cursor.lastrowid
 
     def get_daily_history(self, days=7, end_date=None):
@@ -304,6 +331,8 @@ class DatabaseManager:
             raise ValueError("Invalid task status.")
         with self._connection() as conn:
             conn.execute("UPDATE tasks SET name = COALESCE(?, name), status = COALESCE(?, status) WHERE id = ?", (name, status, task_id))
+            if status == 'completed':
+                RewardService.task(conn, task_id)
 
     def get_tasks(self):
         with self._connection() as conn:
@@ -341,9 +370,27 @@ class DatabaseManager:
                 ended = self._as_datetime(row['updated'])
                 day = ended.date().isoformat()
                 conn.execute("INSERT OR IGNORE INTO daily_stats(date) VALUES (?)", (day,))
-                conn.execute("""INSERT INTO focus_sessions (date, start_time, end_time, duration_seconds, completed, source, note, task_id)
+                cursor = conn.execute("""INSERT INTO focus_sessions (date, start_time, end_time, duration_seconds, completed, source, note, task_id)
                     VALUES (?, ?, ?, ?, ?, 'manual', ?, ?)""", (day, row['started'], row['updated'], row['elapsed'], int(completed), row['note'], row['task_id']))
                 conn.execute("UPDATE daily_stats SET focus_sessions_count=focus_sessions_count+?, longest_session_seconds=MAX(longest_session_seconds, ?) WHERE date=?",
                     (int(completed), row['elapsed'], day))
+                RewardService.session(conn, cursor.lastrowid)
             conn.execute("DELETE FROM focus_checkpoint WHERE singleton=1")
             return True
+
+    def get_evolution_snapshot(self, claim_unlocks=False):
+        """Read a consistent view; acknowledge transitions before any animation."""
+        with self._connection(notify=False) as conn:
+            conn.execute('BEGIN IMMEDIATE' if claim_unlocks else 'BEGIN')
+            row = conn.execute('SELECT * FROM pet_progress WHERE singleton=1').fetchone()
+            progress = progress_for(int(row['xp']))
+            advance = max(0, progress.completed - row['seen_level'])
+            if claim_unlocks and advance:
+                conn.execute('UPDATE pet_progress SET seen_level=? WHERE singleton=1', (progress.completed,))
+            return {
+                'progress': progress, 'advance': advance,
+                'unlocks': tuple(r[0] for r in conn.execute('SELECT level FROM evolution_unlocks ORDER BY level')),
+                'achievements': tuple(r[0] for r in conn.execute('SELECT name FROM earned_achievements ORDER BY earned_at')),
+                'sessions': [dict(r) for r in conn.execute('SELECT id, date, duration_seconds, note FROM focus_sessions WHERE completed=1 ORDER BY end_time DESC, id DESC LIMIT 100')],
+                'rewards': [dict(r) for r in conn.execute("SELECT event_id, kind, xp, created_at FROM reward_events WHERE xp != '0' ORDER BY rowid DESC LIMIT 12")],
+            }
