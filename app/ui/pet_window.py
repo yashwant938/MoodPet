@@ -354,8 +354,8 @@ class PetWindow(QWidget):
         self._stop_session()
         self.focus_tracker.finish_current_session()
 
-    def _show_context_menu(self, pos):
-        """Right click context menu."""
+    def _create_context_menu(self):
+        """Build the pet menu using the current timer and locally saved history."""
         menu = QMenu(self)
         menu.setStyleSheet("""
             QMenu {
@@ -369,12 +369,42 @@ class PetWindow(QWidget):
                 background-color: #313244;
                 color: #CBA6F7;
             }
+            QMenu::item:disabled { color: #BAC5DE; }
         """)
 
+        session = self.focus_session_mgr
+        if session.is_focus_active:
+            name = self.db.get_task_name(self.session_task_id)
+            name = " ".join(name.split()) if name else ("Task unavailable" if self.session_task_id is not None else "No task selected")
+            name = name if len(name) <= 46 else name[:45] + "…"
+            status = "Paused" if session.is_paused else "Focusing"
+            status_text = f"{status}: {name}".replace("&", "&&")
+        elif session.is_break_active:
+            status_text = "Break paused" if session.is_paused else "Taking a break"
+        else:
+            status_text = "No focus session running"
+        status = menu.addAction(status_text)
+        status.setEnabled(False)
+
+        week = self.db.get_previous_week_totals()
+        dates = f"{week['start'].strftime('%d %b')}–{week['end'].strftime('%d %b')}"
+        heading = menu.addAction(f"Last week ({dates}) · daily average")
+        heading.setEnabled(False)
+        def average(total):
+            minutes = (total + 210) // 420  # nearest minute, averaged over seven days
+            return f"{minutes // 60}h {minutes % 60:02d}m / day"
+        for title, seconds in (("Focus timers", week['timer_seconds']), ("Tracked productive", week['tracked_seconds'])):
+            action = menu.addAction(f"{title}: {average(seconds)}")
+            action.setEnabled(False)
+        menu.addSeparator()
+
         today = self.db.get_today_stats()
-        prod_fmt = self.focus_tracker.format_time(today["productive_seconds"])
+        automatic = self.settings.get("tracking_mode", "manual") == "automatic"
+        seconds = today["productive_seconds"] if automatic else self.db.get_timer_seconds_today()
+        prod_fmt = self.focus_tracker.format_time(seconds)
+        today_label = "Tracked today" if automatic else "Timer today"
         streak = self.focus_tracker.current_streak
-        stats_act = QAction(f"🔥 Streak: {streak} days  |  📊 Today: {prod_fmt}", menu)
+        stats_act = QAction(f"🔥 Streak: {streak} days  |  {today_label}: {prod_fmt}", menu)
         stats_act.setEnabled(False)
         menu.addAction(stats_act)
         menu.addSeparator()
@@ -398,7 +428,15 @@ class PetWindow(QWidget):
         exit_act.triggered.connect(QApplication.instance().quit)
         menu.addAction(exit_act)
 
-        menu.exec(QCursor.pos())
+        return menu
+
+    def _show_context_menu(self, pos):
+        """Right click context menu."""
+        menu = self._create_context_menu()
+        try:
+            menu.exec(QCursor.pos())
+        finally:
+            menu.deleteLater()
 
     def open_settings(self):
         dialog = SettingsDialog(self.settings, self.db, self.focus_tracker, parent=self)

@@ -262,6 +262,30 @@ class DatabaseManager:
         with self._connection() as conn:
             return conn.execute("SELECT COALESCE(SUM(duration_seconds), 0) FROM focus_sessions WHERE date = ? AND source = 'manual'", (date.today().isoformat(),)).fetchone()[0]
 
+    def get_previous_week_totals(self, today=None):
+        """Return separate timer and tracked totals for the last complete Mon–Sun week.
+
+        Timer sessions belong to their recorded end date, as elsewhere in the
+        application. All seven days count when calculating a daily average.
+        """
+        current = self._as_date(today)
+        this_monday = current - timedelta(days=current.weekday())
+        start, end = this_monday - timedelta(days=7), this_monday - timedelta(days=1)
+        bounds = (start.isoformat(), end.isoformat())
+        with self._connection() as conn:
+            timer = conn.execute("""SELECT COALESCE(SUM(MAX(0, COALESCE(duration_seconds, 0))), 0)
+                FROM focus_sessions WHERE source = 'manual' AND date BETWEEN ? AND ?""", bounds).fetchone()[0]
+            tracked = conn.execute("""SELECT COALESCE(SUM(MAX(0, COALESCE(productive_seconds, 0))), 0)
+                FROM daily_stats WHERE date BETWEEN ? AND ?""", bounds).fetchone()[0]
+        return {"start": start, "end": end, "timer_seconds": int(timer), "tracked_seconds": int(tracked)}
+
+    def get_task_name(self, task_id):
+        if task_id is None:
+            return None
+        with self._connection() as conn:
+            row = conn.execute("SELECT name FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            return row["name"] if row else None
+
     def create_task(self, name, project="", estimate_seconds=0):
         name, project = name.strip(), project.strip()
         if not name or len(name) > 100 or len(project) > 100:

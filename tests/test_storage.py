@@ -23,6 +23,26 @@ class StorageTests(unittest.TestCase):
                 (day.isoformat(), productive, sessions),
             )
 
+    def test_previous_week_totals_keep_timer_and_tracked_time_separate(self):
+        # Monday at a year boundary: the previous full week is Dec 28–Jan 3.
+        today = date(2027, 1, 4)
+        start, end = date(2026, 12, 28), date(2027, 1, 3)
+        self.add_day(start, productive=3600)
+        self.add_day(end, productive=1800)
+        self.add_day(today, productive=9999)  # current week is excluded
+        self.db.record_focus_session(3600, end_time=datetime(2026, 12, 28, 12), source="manual")
+        self.db.record_focus_session(1800, completed=False, end_time=datetime(2027, 1, 3, 12), source="manual")
+        self.db.record_focus_session(7200, end_time=datetime(2027, 1, 3, 18), source="automatic")
+        self.db.record_focus_session(1111, end_time=datetime(2027, 1, 4, 1), source="manual")
+        totals = self.db.get_previous_week_totals(today)
+        self.assertEqual(totals, {"start": start, "end": end, "timer_seconds": 5400, "tracked_seconds": 5400})
+        self.assertEqual(self.db.get_previous_week_totals(date(2027, 1, 10)), totals)
+
+    def test_previous_week_totals_are_zero_without_records(self):
+        totals = self.db.get_previous_week_totals(date(2026, 11, 2))
+        self.assertEqual((totals["timer_seconds"], totals["tracked_seconds"]), (0, 0))
+        self.assertEqual((totals["start"], totals["end"]), (date(2026, 10, 26), date(2026, 11, 1)))
+
     def test_history_is_sorted_zero_filled_and_survives_restart(self):
         end = date(2026, 9, 26)
         self.add_day(end - timedelta(days=2), productive=900)

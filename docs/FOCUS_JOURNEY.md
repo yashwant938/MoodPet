@@ -9,6 +9,8 @@ On first launch choose Orbit (ivory) or Starlight (lavender), a daily goal, and 
 
 Click the pet or tray icon to open the dashboard. Right-click the pet or open the tray menu for **Quick actions**. Starting a second timer is disabled while a timer is active. Pause activity tracking for 15 minutes without stopping a manual focus timer; use Resume tracking to return early. Hiding the pet does not pause tracking.
 
+The pet's right-click menu shows the current focus task (or a paused, break, or idle state) and the average daily time for the previous complete Monday–Sunday week. All seven days count, including days without activity. Focus timers and automatically tracked productive activity are displayed separately; they can overlap and are not added together. Timer averages include saved partial and completed sessions, assigned to their end date.
+
 ## Understand and correct activity
 
 Overview shows the current classification and reason. **Why this activity? / Correct it** opens the most recent external window; MoodPet's own windows do not earn productive time. Corrections refer to the window captured when the panel opened, not whichever app becomes foreground afterward.

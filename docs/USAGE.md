@@ -17,6 +17,8 @@ python main.py
 
 Click the floating pet or tray icon to open your dashboard. Drag the pet to move it. Right-click for preferences, hiding the companion, or quitting. Closing the dashboard leaves the companion running; use **Exit MoodPet** to quit.
 
+Right-click the pet to see the current task and whether its focus timer is paused. The menu also shows average hours per day for the last completed Monday–Sunday week, including zero-activity days. Focus-timer averages use saved manual sessions, including partial sessions; tracked productive activity is shown separately. Sessions spanning midnight are assigned to the day they ended.
+
 ## Your dashboard
 
 - **Overview:** live activity charts for 7 or 30 days, a 12-week activity calendar, daily goal, streaks, focus balance, and tiny daily wins. Hover chart bars and calendar cells for exact details.

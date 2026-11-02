@@ -65,6 +65,43 @@ class DashboardIntegrationTests(unittest.TestCase):
         dashboard.clock_timer.stop()
         return dashboard
 
+    def test_pet_menu_shows_current_task_and_separate_weekly_averages(self):
+        self.db.get_previous_week_totals = lambda: {
+            "start": datetime(2026, 10, 26).date(), "end": datetime(2026, 11, 1).date(),
+            "timer_seconds": 7 * 5400, "tracked_seconds": 7 * 7200,
+        }
+        idle = self.pet._create_context_menu()
+        texts = [a.text() for a in idle.actions()]
+        self.assertEqual(texts[:4], ["No focus session running", "Last week (26 Oct–01 Nov) · daily average",
+                         "Focus timers: 1h 30m / day", "Tracked productive: 2h 00m / day"])
+        self.assertTrue(all(not action.isEnabled() for action in idle.actions()[:4]))
+        dashboard = self.dashboard()
+        task_id = self.db.create_task("Research & design")
+        dashboard._refresh_tasks(task_id)
+        self.pet._start_focus_session(1500)
+        self.assertEqual(self.pet.session_task_id, task_id)
+        self.assertEqual(self.pet._create_context_menu().actions()[0].text(), "Focusing: Research && design")
+        self.db.update_task(task_id, name="Read papers")
+        self.pet._toggle_session_pause()
+        self.assertEqual(self.pet._create_context_menu().actions()[0].text(), "Paused: Read papers")
+        self.pet._stop_session()
+        self.pet._start_break_session(300)
+        self.assertEqual(self.pet._create_context_menu().actions()[0].text(), "Taking a break")
+        self.pet._toggle_session_pause()
+        self.assertEqual(self.pet._create_context_menu().actions()[0].text(), "Break paused")
+        self.pet._stop_session()
+        self.assertEqual(self.pet._create_context_menu().actions()[0].text(), "No focus session running")
+
+    def test_pet_menu_shows_focus_without_task_and_shortens_long_names(self):
+        dashboard = self.dashboard()
+        self.pet._start_focus_session(60)
+        self.assertEqual(self.pet._create_context_menu().actions()[0].text(), "Focusing: No task selected")
+        self.pet._stop_session()
+        task_id = self.db.create_task("Long " * 18)
+        dashboard._refresh_tasks(task_id)
+        self.pet._start_focus_session(60)
+        self.assertTrue(self.pet._create_context_menu().actions()[0].text().endswith("…"))
+
     def test_task_picker_attaches_completed_session_and_counts_time_once(self):
         dashboard = self.dashboard()
         dashboard.navigate(4)
