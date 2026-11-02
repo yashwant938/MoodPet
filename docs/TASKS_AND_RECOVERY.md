@@ -6,6 +6,6 @@ The additive migration creates `tasks` and a single-row `focus_checkpoint` table
 
 Session dates follow the local calendar date of the last checkpoint, including cross-midnight sessions. If the wall clock moves before the start, the checkpoint timestamp is clamped to its start; no wall-clock difference is added to elapsed time. Timers and records remain local and no window titles are added to storage.
 
-Known limitations: checkpoint and dashboard queries run synchronously on the Qt thread, so unusually slow storage can affect responsiveness. There is no timer resumption after recovery, task estimate editor, separate project management, pet accessory progression, weekly analytics, or configurable break reminder in this first increment. The existing manual timer and tracker still use their current behavior.
+Known limitations: checkpoint and activity-dashboard queries retain the existing synchronous Qt-thread path, so unusually slow storage can affect responsiveness. Evolution snapshots use a background worker. There is no timer resumption after recovery, task estimate editor, separate project management, full weekly analytics, or configurable break reminder. See [evolution architecture](EVOLUTION.md) for the new accessory progression and durable XP behavior.
 
 To reproduce the dashboard screenshots with temporary fixture data, run `python scratch/render_dashboard.py`; `scratch/dashboard-tasks.png` shows the task screen. Use `python main.py --demo` for an interactive disposable profile. Neither command requires access to a real profile.
