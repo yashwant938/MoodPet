@@ -1,7 +1,7 @@
 [Setup]
 AppId={{EEDC6678-72C1-4C3E-A6F1-73ACF5763F9A}
 AppName=MoodPet
-AppVersion=0.2.2
+AppVersion=0.3.0
 AppPublisher=Yashwant Singh Rana
 DefaultDirName={localappdata}\Programs\MoodPet
 DefaultGroupName=MoodPet

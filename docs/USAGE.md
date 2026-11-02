@@ -4,7 +4,7 @@ A Windows desktop companion that turns small focus sessions into visible progres
 
 ## Choose your mode
 
-The first launch asks for a tracking choice before monitoring starts. Timer-only is the default and uses saved focus-timer minutes for the daily goal; automatic mode uses tracked productive time. App-activity charts always remain separate. See the [focus journey guide](FOCUS_JOURNEY.md) for corrections, quick actions, personalities, constellation stars and the Windows download workflow.
+The first launch asks for a tracking choice before monitoring starts. Timer-only is the default and uses saved focus-timer minutes for the daily goal; automatic mode uses tracked productive time. App-activity charts always remain separate. See the [focus journey guide](FOCUS_JOURNEY.md) for corrections, quick actions, personalities, evolution stages and the Windows download workflow.
 
 ## Run
 
@@ -25,7 +25,7 @@ Right-click the pet to see the current task and whether its focus timer is pause
 - **Focus room:** preset or custom 1–180 minute sessions, pause/resume, and 5/10 minute breaks. Ending a session early saves it as partial. Timers pause after a long gap such as computer sleep.
 - **Session history:** your most recent 100 sessions, lifetime stats, achievement collection, and a 90-day CSV activity export.
 - **Tasks:** enter a task name and press Enter or click Add task. Project and estimate are optional. Select an active row and click **Focus on this task** (or double-click the row), then choose your duration and click **Start focus**. You can also rename, complete, archive or reopen tasks. Focus without a task by choosing **No task · just focus** in the Focus room. Saved partial and completed manual sessions contribute to the task's focused time.
-- **Companion growth:** 1 XP for each productive minute and 25 XP for each completed session; every 250 XP gains a level. Progress is calculated from saved history.
+- **Focus journey:** ten stages with ten levels each, an interactive map, stage cosmetics, upcoming rewards and the original completed-session notes. Earn 1 XP per tracked productive minute, 25 XP per completed session and 10 XP per task (once). Each level costs `25 + 2 × (global level − 1)` XP. Earned XP persists independently of history resets.
 
 ## How tracking works
 
@@ -39,7 +39,7 @@ Automatic productive blocks of at least five minutes are saved once when the blo
 
 Settings live in `%USERPROFILE%\.moodpet\config.json`; history lives in `%USERPROFILE%\.moodpet\moodpet.db`. Existing databases are upgraded in place. Streaks, XP, achievements, goals, and history survive restarting the app. On a normal exit a running focus session is saved as partial. If interrupted unexpectedly, choose on restart whether to save the last checkpoint as partial or discard it. The timer does not resume automatically, and closed, paused and sleep time are not counted. Up to approximately five seconds since the last checkpoint may be lost.
 
-The app reads foreground app names/window titles to classify activity and checks the time since your last input. It stores aggregate durations and session records locally, not window titles or keystrokes. Preferences lets you edit app rules and thresholds, choose quiet hours, and configure startup. Resetting today's statistics also deletes today's sessions, which may change your streak and XP.
+The app reads foreground app names/window titles to classify activity and checks the time since your last input. It stores aggregate durations and session records locally, not window titles or keystrokes. Preferences lets you edit app rules and thresholds, choose quiet hours, and configure startup. Resetting today's statistics deletes today's sessions and may change the streak; earned XP, stage cosmetics and earned achievements remain.
 
 ## Verify
 

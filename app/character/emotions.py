@@ -18,6 +18,28 @@ class EmotionalPose(Enum):
     READING = "READING"
     BREAK = "BREAK"
     CELEBRATION = "CELEBRATION"
+    LAUGHING = "LAUGHING"
+    PROUD = "PROUD"
+    CELEBRATING = "CELEBRATING"
+
+
+class PetReactionState:
+    """Expiring reactions over a continuous base pose, using monotonic time."""
+    PRIORITY = {EmotionalPose.CELEBRATING: 100, EmotionalPose.CELEBRATION: 100,
+                EmotionalPose.EXCITED: 80, EmotionalPose.PROUD: 75, EmotionalPose.LAUGHING: 70,
+                EmotionalPose.BREAK: 60, EmotionalPose.FOCUSED: 60, EmotionalPose.SLEEPY: 55,
+                EmotionalPose.HAPPY: 50}
+
+    def __init__(self):
+        self.reactions = {}
+
+    def react(self, pose, now, duration=4):
+        if duration > 0:
+            self.reactions[pose] = now + duration
+
+    def resolve(self, base, now):
+        self.reactions = {pose: until for pose, until in self.reactions.items() if until > now}
+        return max((base, *self.reactions), key=lambda pose: self.PRIORITY.get(pose, 0))
 
 class EmotionalStateEngine:
     """Manages continuous internal emotional variables and pose transitions based on reference design."""

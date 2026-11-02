@@ -29,7 +29,12 @@ def run():
         dashboard.show()
         app.processEvents()
         dashboard.navigate(3)
+        for _ in range(200):
+            if dashboard.evolution_controller.snapshot is not None:
+                break
+            QTest.qWait(10)
         assert dashboard.journey.list.count() == 1
+        assert dashboard.journey.map.nodes[1].isEnabled()
         assert not dashboard.mini_pet.observe_activity
         assert not dashboard.grab().isNull()
         # Exercise the same keyboard/mouse paths as the installed application.
@@ -48,6 +53,7 @@ def run():
         assert dashboard.pages.currentIndex() == 1
         assert dashboard.task_picker.currentData() == task_id
         dashboard.close()
+        dashboard.evolution_controller.close()
         pet = PetWindow(settings, db)
         pet.logic_timer.stop()
         pet.typing_timer.stop()

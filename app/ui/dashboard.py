@@ -1,5 +1,6 @@
 """The companion's local-first productivity dashboard."""
 import csv
+import time
 from datetime import date, datetime
 from pathlib import Path
 
@@ -14,7 +15,8 @@ from PySide6.QtWidgets import (
 
 from app.ui.charts import ActivityChart, ActivityHeatmap, GoalRing
 from app.ui.character import HumanCharacterWidget
-from app.ui.journey import JourneyPanel
+from app.ui.journey import JourneyPanel, xp_text
+from app.ui.evolution_controller import EvolutionController
 from app.character.emotions import EmotionalPose
 
 
@@ -83,7 +85,7 @@ QFrame#card { background: white; border: 1px solid #E3E9E5; border-radius: 16px;
 QFrame#sidebar { background: #193C2E; border: none; }
 QFrame#sidebar QLabel { color: #F2F7F3; }
 QFrame#sidebar QLabel#muted { color: #B3C7BA; }
-QFrame#sidebar QPushButton { background: transparent; color: #C4D5CA; text-align: left; border: none; padding: 13px 16px; }
+QFrame#sidebar QPushButton { background: transparent; color: #C4D5CA; text-align: left; border: none; padding: 10px 16px; }
 QFrame#sidebar QPushButton:hover { background: #264D3C; }
 QFrame#sidebar QPushButton:checked { background: #DDF3E5; color: #193C2E; font-weight: 700; }
 QPushButton { background: #FFFFFF; border: 1px solid #DAE3DC; border-radius: 9px; padding: 9px 15px; font-weight: 600; }
@@ -130,13 +132,22 @@ class Dashboard(QDialog):
         self.db = db
         self.settings = settings
         self.session = session_manager
+        self._level_celebration_until = 0
+        self.evolution_controller = getattr(parent, 'evolution_controller', None) or EvolutionController(db, self)
+        if not getattr(parent, 'evolution_controller', None):
+            controller = self.evolution_controller
+            self.destroyed.connect(lambda: controller.close())
         self.period = 7
-        self.setWindowTitle("MoodPet — Your focus, growing.")
+        self.setWindowTitle("MoodPet — Demo · fictional data" if settings.get('demo_mode',False) else "MoodPet — Your focus, growing.")
         self.setWindowFlags(Qt.Window)
         self.resize(1180, 860)
         self.setMinimumSize(960, 640)
         self.setStyleSheet(STYLE)
         self._build()
+        self.evolution_controller.changed.connect(self._evolution_changed)
+        self.evolution_controller.advanced.connect(self._celebrate_evolution)
+        if self.evolution_controller.snapshot:
+            self._evolution_changed(self.evolution_controller.snapshot)
         self.refresh()
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(self.refresh)
@@ -151,15 +162,15 @@ class Dashboard(QDialog):
         sidebar.setObjectName("sidebar")
         sidebar.setFixedWidth(198)
         side = QVBoxLayout(sidebar)
-        side.setContentsMargins(18, 28, 18, 24)
-        side.setSpacing(9)
+        side.setContentsMargins(18, 24, 18, 18)
+        side.setSpacing(6)
         brand = label("moodpet", "heading")
         brand.setStyleSheet("font-size: 26px; color: white; padding-left: 12px;")
         side.addWidget(brand)
         tagline = label("SMALL STEPS. REAL GROWTH.", "muted")
         tagline.setStyleSheet("font-size: 8px; color: #B3C7BA; padding-left: 12px; letter-spacing: 1px;")
         side.addWidget(tagline)
-        side.addSpacing(32)
+        side.addSpacing(20)
         self.nav_group = QButtonGroup(self)
         self.nav_buttons = []
         for index, text in enumerate(("Overview", "Focus room", "Session history", "Focus journey", "Tasks")):
@@ -174,7 +185,7 @@ class Dashboard(QDialog):
         self.nav_buttons[0].setChecked(True)
         side.addStretch()
         self.mini_pet = HumanCharacterWidget()
-        self.mini_pet.setFixedSize(150, 130)
+        self.mini_pet.setFixedSize(150, 110)
         self.mini_pet.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.mini_pet.set_pose(EmotionalPose.HAPPY)
         side.addWidget(self.mini_pet, 0, Qt.AlignHCenter)
@@ -206,7 +217,7 @@ class Dashboard(QDialog):
         self._build_focus()
         self._build_history()
         journey_layout = self._page()
-        self.journey = JourneyPanel()
+        self.journey = JourneyPanel(self.evolution_controller, self.settings)
         journey_layout.addWidget(self.journey)
         self._build_tasks()
         # This is a multi-page window, not a confirmation dialog. Enter in a
@@ -710,7 +721,7 @@ class Dashboard(QDialog):
             self.insight_label.setText("Your story starts here. Use a productive app and your activity will appear automatically.")
         if manual:
             self.chart_summary.setText(f"Tracked app activity · automatic monitoring is off")
-            self.insight_label.setText("Timer sessions grow your constellation. Enable automatic tracking in Preferences only if you want app-activity charts.")
+            self.insight_label.setText("Completed timer sessions grow your companion. Enable automatic tracking in Preferences only if you want app-activity charts.")
         target = self.goal_input.value() * 60
         self.goal_ring.set_progress(progress, target)
         self.goal_summary.setText(f"{duration(progress)} of {duration(target)}" + (" · Goal reached!" if progress >= target else ""))
@@ -721,21 +732,8 @@ class Dashboard(QDialog):
                 ("Find 15 minutes of focus", "Complete a focus session", "Reach your daily goal")):
             widget.setText(f"{'●' if done else '○'}  {text}")
             widget.setStyleSheet(f"color: {'#237A57' if done else '#728176'}; padding: 5px 0;")
-        xp = int(lifetime["productive_seconds"] // 60) + lifetime["completed_sessions"] * 25
-        level = xp // 250 + 1
-        self.level_label.setText(f"Level {level} · {'Seedling' if level < 5 else 'Sprout' if level < 10 else 'Bloom'}")
-        self.xp_label.setText(f"{xp % 250} / 250 XP to the next level")
-        self.xp_bar.setValue(round((xp % 250) / 250 * 100))
-        self.xp_bar.setToolTip("1 XP per productive minute + 25 XP per completed session. Progress is calculated from saved history.")
         self.badge_label.setText(f"Your companion has grown with you for {duration(lifetime['productive_seconds'])} of productive time.")
         self.lifetime_label.setText(f"All time: {duration(lifetime['productive_seconds'])} productive · {lifetime['completed_sessions']} completed sessions · Longest session {duration(lifetime['longest_session_seconds'])}")
-        milestones = [
-            (lifetime["completed_sessions"] >= 1, "First step", "1 completed session"),
-            (streaks["best_streak"] >= 3, "Finding rhythm", "3-day streak"),
-            (streaks["best_streak"] >= 7, "A week of you", "7-day streak"),
-            (lifetime["productive_seconds"] >= 36000, "Deep roots", "10 productive hours"),
-        ]
-        self.achievements.setText("\n\n".join(f"{'● Unlocked' if done else '○ In progress'}   ·   {title}   —   {condition}" for done, title, condition in milestones))
         sessions = self.db.get_recent_sessions(100)
         self.history_table.setRowCount(len(sessions))
         self.history_empty.setVisible(not sessions)
@@ -757,6 +755,19 @@ class Dashboard(QDialog):
             self.history_table.setRowHeight(i, 46)
         self.refresh_timer_state()
 
+    def _evolution_changed(self, snapshot):
+        progress = snapshot['progress']
+        self.mini_pet.set_evolution(progress)
+        self.level_label.setText(f'{progress.stage.name} · Level {progress.level}')
+        self.xp_label.setText('Legend mastered · ' + xp_text(progress.xp) + ' XP' if progress.mastered else f'{progress.earned} / {progress.required} XP')
+        self.xp_bar.setValue(100 if progress.mastered else min(100, progress.earned*100//progress.required))
+        self.xp_bar.setToolTip('Lifetime XP: tracked productive minutes + 25 per completed session + 10 per task, once. Earned XP never expires.')
+        self.achievements.setText('\n\n'.join(f"{'● Unlocked' if title in snapshot['achievements'] else '○ In progress'}   ·   {title}   —   {condition}" for title, condition in (
+            ('First step','1 completed session'), ('Finding rhythm','3-day streak'), ('A week of you','7-day streak'), ('Deep roots','10 productive hours'))))
+
+    def _celebrate_evolution(self, count):
+        self._level_celebration_until = time.monotonic() + 4
+
     def refresh_timer_state(self):
         session = self.session
         active = session.is_focus_active or session.is_break_active
@@ -777,7 +788,7 @@ class Dashboard(QDialog):
         self._update_task_actions()
         self.pause_button.setText("Resume" if paused else "Pause")
         self.stop_button.setEnabled(active)
-        self.mini_pet.set_pose(EmotionalPose.BREAK if session.is_break_active else EmotionalPose.FOCUSED if session.is_focus_active else EmotionalPose.HAPPY)
+        self.mini_pet.set_pose(EmotionalPose.CELEBRATING if time.monotonic() < self._level_celebration_until else EmotionalPose.BREAK if session.is_break_active else EmotionalPose.FOCUSED if session.is_focus_active else EmotionalPose.HAPPY)
 
     def export_activity(self):
         path, _ = QFileDialog.getSaveFileName(self, "Export your last 90 days", f"moodpet-activity-{date.today()}.csv", "CSV files (*.csv)")
@@ -799,10 +810,7 @@ class Dashboard(QDialog):
         self.refresh()
         self.refresh_timer.start(5000)
         self.clock_timer.start(250)
-        if self.settings.get("animations_enabled", True):
-            self.mini_pet.timer.start(16)
-        else:
-            self.mini_pet.timer.stop()
+        self.mini_pet.set_motion_enabled(self.settings.get('animations_enabled',True))
 
     def hideEvent(self, event):
         self.refresh_timer.stop()

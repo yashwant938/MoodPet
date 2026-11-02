@@ -1,6 +1,6 @@
 # MoodPet
 
-A native Windows focus companion with a personal constellation, supportive personalities, explainable activity rules, and an interactive Qt dashboard.
+A native Windows focus companion with a 100-level evolution journey, expressive pets, supportive personalities, explainable activity rules, and an interactive Qt dashboard.
 
 ## Why this project exists
 
@@ -15,7 +15,8 @@ flowchart LR
     Track --> Focus[Focus and productivity state]
     Timer[Manual focus timer] --> Focus
     Focus --> DB[Local SQLite history]
-    DB --> UI[PySide6 dashboard, history and constellation]
+    DB --> Rewards[Transactional XP ledger and evolution unlocks]
+    Rewards --> UI[Qt evolution map and shared pet state]
     Focus --> Pet[Desktop companion]
     Config[JSON settings] --> Track
 ```
@@ -33,10 +34,12 @@ Try `python main.py --demo` to explore fictional temporary history with no activ
 - Correct activity for the current window for up to 30 minutes, or explicitly save a keyword rule. Idle time still wins. Remembered corrections can be removed in Preferences.
 - Start focus, take a break, pause/resume timers, pause tracking for 15 minutes, or inspect the current classification from the pet/tray quick actions.
 - Right-click the pet to see the active task and the previous Monday–Sunday daily averages for focus timers and tracked productive activity, kept separate.
-- Completed sessions light a constellation star; optional 120-character intentions appear alongside keyboard-accessible session details. Breaks and missed days never remove stars.
+- Explore ten original evolution worlds, each with ten interactive levels, increasing XP requirements, unique stage cosmetics and smaller visor/orbit upgrades. Completed-session history and optional 120-character intentions remain available below the map.
+- One shared asynchronous progression feed updates the floating pet, sidebar and journey. Unlock celebrations are acknowledged persistently before playback; quiet and reduced-motion preferences are respected.
+- Keep the existing 1 XP per tracked productive minute and 25 XP per completed session; completing a task adds 10 XP once. XP, accessories and earned achievements persist through restarts, missed days and daily-stat resets.
 - Gentle (default), playful and quiet personalities; quiet silences all speech, including developer events.
 - Opt-in local build/test events react to fixed event names without reading code, running commands, or changing XP.
-- Durable daily activity and session records drive streaks, XP, achievements, and history across restarts.
+- Durable daily activity and session records drive streaks and history; a separate local reward ledger preserves earned XP and achievements.
 - Focus timers support pause/resume and partial-session recording; automatic sessions are suppressed during manual focus and breaks to avoid double counting.
 - Organize optional focus tasks by project, add time estimates, and see completed and partial timer time per task.
 - An interrupted timer offers to save its last checkpoint as a partial session or discard it; no time is credited while the app is closed.
@@ -75,7 +78,7 @@ Drag the pet to reposition it. Right-click for preferences or **Exit MoodPet**. 
 
 ## Example
 
-Open the dashboard, start a 25-minute focus session, pause and resume as needed, and complete it. The session appears in history and contributes to the day's streak. Reopen MoodPet to inspect the saved record. The session timer does not reclassify unrelated foreground activity as productive.
+Open the dashboard, start a 25-minute focus session, pause and resume as needed, and complete it. The session appears in history, awards 25 XP once, and advances the evolution map immediately. Explore other stages to preview their environments and upcoming cosmetics. The session timer does not reclassify unrelated foreground activity as productive.
 
 ## Engineering Challenges
 
@@ -90,7 +93,7 @@ Run the regression suite and an optional dashboard preview with disposable fixtu
 
 ## Future Improvements
 
-- Add pet accessories and progression, weekly insights, and configurable break reminders.
+- Add a cosmetic wardrobe, richer weekly insights, and configurable break reminders.
 - Add configurable retention and richer import/export options.
 
 See the [usage and data guide](docs/USAGE.md) for exact scoring, history, automatic-session, and reset behavior.
@@ -98,3 +101,7 @@ See the [usage and data guide](docs/USAGE.md) for exact scoring, history, automa
 See [the new experience guide](docs/FOCUS_JOURNEY.md) for corrections, tone, developer events, packaging and data behavior.
 
 See [tasks and recovery](docs/TASKS_AND_RECOVERY.md) for migration details, recovery guarantees, and current limitations.
+
+See [evolution architecture](docs/EVOLUTION.md) for reward rules, migration and validation details. Reproduce the fixture screenshots with `python docs/preview_evolution.py`.
+
+![Evolution journey — fictional preview](docs/images/evolution-journey.png)
