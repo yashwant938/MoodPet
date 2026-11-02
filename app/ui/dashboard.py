@@ -759,7 +759,7 @@ class Dashboard(QDialog):
         progress = snapshot['progress']
         self.mini_pet.set_evolution(progress)
         self.level_label.setText(f'{progress.stage.name} · Level {progress.level}')
-        self.xp_label.setText('Legend mastered · ' + xp_text(progress.xp) + ' XP' if progress.mastered else f'{progress.earned} / {progress.required} XP')
+        self.xp_label.setText('Journey mastered · ' + xp_text(progress.xp) + ' XP' if progress.mastered else f'{progress.earned} / {progress.required} XP')
         self.xp_bar.setValue(100 if progress.mastered else min(100, progress.earned*100//progress.required))
         self.xp_bar.setToolTip('Lifetime XP: tracked productive minutes + 25 per completed session + 10 per task, once. Earned XP never expires.')
         self.achievements.setText('\n\n'.join(f"{'● Unlocked' if title in snapshot['achievements'] else '○ In progress'}   ·   {title}   —   {condition}" for title, condition in (

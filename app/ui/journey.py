@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt, QPointF, QRectF, QVariantAnimation, QTimer
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QLinearGradient
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget,
     QPushButton, QComboBox, QProgressBar, QFrame)
-from app.productivity.progression import STAGES, RULES, progress_for
+from app.productivity.progression import STAGES, RULES, TOTAL_LEVELS, progress_for
 from app.ui.character import HumanCharacterWidget
 from app.character.emotions import EmotionalPose
 
@@ -106,9 +106,9 @@ class StageMap(QWidget):
             c = QColor(color); c.setAlpha(12 + i*2)
             p.setBrush(c)
             x = i * self.width()/6
-            if self.stage_index in (2, 3, 6, 7):
+            if self.stage_index % 10 in (2, 3, 6, 7):
                 p.drawRoundedRect(QRectF(x-28, 40+(i%3)*18, 50, self.height()), 6, 6)
-            elif self.stage_index in (1, 5, 8, 9):
+            elif self.stage_index % 10 in (1, 5, 8, 9):
                 p.drawEllipse(QRectF(x-70, 120+(i%2)*40, 160, 30))
             else:
                 path = QPainterPath(QPointF(x-100, self.height()))
@@ -202,14 +202,15 @@ class JourneyPanel(QWidget):
         rank = self.stage_picker.currentIndex()*10+level
         state = 'Completed' if rank <= self.progress.completed else 'Your current level'
         self.details.setText(f'{STAGES[self.stage_picker.currentIndex()].name} · Level {level} · {state}. {RULES.cost(rank)} XP completes this level. '
-                             + ('Visor trim unlocked here.' if level == 3 else 'Orbit details unlocked here.' if level == 6 else 'Next stage unlocks after this level.' if level == 10 and rank <100 else 'Every step counts.'))
+                             + ('Visor trim unlocked here.' if level == 3 else 'Orbit details unlocked here.' if level == 6 else 'Next stage unlocks after this level.' if level == 10 and rank < TOTAL_LEVELS else 'Every step counts.'))
 
     def _received(self, snapshot):
         previous = self.progress
         self.progress = progress = snapshot['progress']
         self.title.setText(f'{progress.stage.name} · Level {progress.level} / 10')
-        self.summary.setText(('Demo · fictional data · ' if self.settings.get('demo_mode',False) else '') + f'{xp_text(progress.xp)} lifetime XP · ' + ('Legend mastered. Your XP keeps growing.' if progress.mastered else f'{progress.earned} / {progress.required} XP to complete this level'))
+        self.summary.setText(('Demo · fictional data · ' if self.settings.get('demo_mode',False) else '') + f'{xp_text(progress.xp)} earned XP · ' + ('Journey mastered. Your XP keeps growing.' if progress.mastered else f'{progress.earned} / {progress.required} XP to complete this level') + (' · previous level preserved' if progress.curve_credit else ''))
         self.xp_bar.setValue(1000 if progress.mastered else min(1000, progress.earned*1000//progress.required))
+        self.xp_bar.setToolTip(f'Earned XP: {xp_text(progress.xp)}. Previous-level adjustment: {xp_text(progress.curve_credit)} XP.' if progress.curve_credit else 'Your earned XP moves this level forward. Each level takes a little more focus.')
         if previous.stage_index != progress.stage_index:
             self.stage_picker.setCurrentIndex(progress.stage_index)
         self.pet.companion_style = self.settings.get('companion_style','orbit')
@@ -217,9 +218,9 @@ class JourneyPanel(QWidget):
         self.pet.set_motion_enabled(self.settings.get('animations_enabled',True))
         self.pet.set_pose(EmotionalPose.PROUD)
         self.reward.setText(progress.stage.accessory)
-        upcoming = STAGES[min(9,progress.stage_index+1)]
+        upcoming = STAGES[min(len(STAGES)-1,progress.stage_index+1)]
         self.next_unlock.setText('Your celestial collection is complete. Keep making time for what matters.' if progress.mastered else
-            f'Next: {upcoming.accessory} at {upcoming.name} 1.' if progress.stage_index <9 else 'Complete Legend 10 to master the journey.')
+            f'Next: {upcoming.accessory} at {upcoming.name} 1.' if progress.stage_index < len(STAGES)-1 else f'Complete {STAGES[-1].name} 10 to master the journey.')
         self.map.set_progress(progress,self.stage_picker.currentIndex(),self.settings.get('companion_style','orbit'),self.settings.get('animations_enabled',True))
         if self._selected_level is not None:
             self._details(self._selected_level)

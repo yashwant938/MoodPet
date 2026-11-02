@@ -1,6 +1,6 @@
 # MoodPet
 
-A native Windows focus companion with a 100-level evolution journey, expressive pets, supportive personalities, explainable activity rules, and an interactive Qt dashboard.
+A native Windows focus companion with a 200-level evolution journey, expressive pets, supportive personalities, explainable activity rules, and an interactive Qt dashboard.
 
 ## Why this project exists
 
@@ -34,7 +34,7 @@ Try `python main.py --demo` to explore fictional temporary history with no activ
 - Correct activity for the current window for up to 30 minutes, or explicitly save a keyword rule. Idle time still wins. Remembered corrections can be removed in Preferences.
 - Start focus, take a break, pause/resume timers, pause tracking for 15 minutes, or inspect the current classification from the pet/tray quick actions.
 - Right-click the pet to see the active task and the previous Monday–Sunday daily averages for focus timers and tracked productive activity, kept separate.
-- Explore ten original evolution worlds, each with ten interactive levels, increasing XP requirements, unique stage cosmetics and smaller visor/orbit upgrades. Completed-session history and optional 120-character intentions remain available below the map.
+- Explore twenty original evolution worlds, each with ten interactive levels, increasing XP requirements, unique stage cosmetics and smaller visor/orbit upgrades. Completed-session history and optional 120-character intentions remain available below the map.
 - One shared asynchronous progression feed updates the floating pet, sidebar and journey. Unlock celebrations are acknowledged persistently before playback; quiet and reduced-motion preferences are respected.
 - Keep the existing 1 XP per tracked productive minute and 25 XP per completed session; completing a task adds 10 XP once. XP, accessories and earned achievements persist through restarts, missed days and daily-stat resets.
 - Gentle (default), playful and quiet personalities; quiet silences all speech, including developer events.

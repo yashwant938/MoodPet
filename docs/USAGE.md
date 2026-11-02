@@ -25,7 +25,7 @@ Right-click the pet to see the current task and whether its focus timer is pause
 - **Focus room:** preset or custom 1–180 minute sessions, pause/resume, and 5/10 minute breaks. Ending a session early saves it as partial. Timers pause after a long gap such as computer sleep.
 - **Session history:** your most recent 100 sessions, lifetime stats, achievement collection, and a 90-day CSV activity export.
 - **Tasks:** enter a task name and press Enter or click Add task. Project and estimate are optional. Select an active row and click **Focus on this task** (or double-click the row), then choose your duration and click **Start focus**. You can also rename, complete, archive or reopen tasks. Focus without a task by choosing **No task · just focus** in the Focus room. Saved partial and completed manual sessions contribute to the task's focused time.
-- **Focus journey:** ten stages with ten levels each, an interactive map, stage cosmetics, upcoming rewards and the original completed-session notes. Earn 1 XP per tracked productive minute, 25 XP per completed session and 10 XP per task (once). Each level costs `25 + 2 × (global level − 1)` XP. Earned XP persists independently of history resets.
+- **Focus journey:** twenty stages with ten levels each, an interactive map, stage cosmetics, upcoming rewards and the original completed-session notes. Earn 1 XP per tracked productive minute, 25 XP per completed session and 10 XP per task (once). Each level costs `50 + 2 × (global level − 1)` XP. Earned XP persists independently of history resets.
 
 ## How tracking works
 

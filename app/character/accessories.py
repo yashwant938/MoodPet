@@ -49,12 +49,62 @@ class AccessoryPainter:
             painter.setBrush(Qt.NoBrush)
             painter.drawEllipse(QRectF(-28,-54,56,12))
             painter.drawEllipse(QPointF(math.cos(phase)*28,-48+math.sin(phase)*5),3,3)
-        else:
+        elif stage == 9:
             path=QPainterPath(QPointF(-24,-36))
             for x,y in ((-27,-52),(-12,-44),(0,-58),(12,-44),(27,-52),(24,-36)):
                 path.lineTo(x,y)
             path.closeSubpath(); painter.drawPath(path)
             painter.setBrush(QColor('white')); painter.drawEllipse(QPointF(0,-43),3,3)
+        elif stage == 10:
+            painter.drawRoundedRect(QRectF(-28,18,56,8),3,3)
+            path=QPainterPath(QPointF(20,20)); path.lineTo(42,32); path.lineTo(32,36); path.lineTo(16,24); path.closeSubpath()
+            painter.drawPath(path)
+        elif stage == 11:
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRoundedRect(QRectF(-30,-20,60,17),7,7)
+            painter.drawEllipse(QPointF(19,-11),5,5)
+            painter.drawLine(19,-18,19,-4)
+        elif stage == 12:
+            for sign in (-1,1):
+                painter.drawRoundedRect(QRectF(sign*42-8,-4,16,21),5,5)
+                painter.setPen(QPen(QColor('white'),1.5)); painter.drawLine(sign*42,-1,sign*42,10)
+                painter.setPen(QPen(QColor(color),2))
+        elif stage == 13:
+            for sign in (-1,1):
+                path=QPainterPath(QPointF(sign*12,-34))
+                path.lineTo(sign*21,-55); path.lineTo(sign*28,-34); path.closeSubpath(); painter.drawPath(path)
+        elif stage == 14:
+            painter.drawRoundedRect(QRectF(33,-12,16,32),3,3)
+            painter.setPen(QPen(QColor('#F8F0D5'),4))
+            painter.drawLine(32,-12,50,-12); painter.drawLine(32,20,50,20)
+            painter.setPen(QPen(QColor('#476F53'),1.5)); painter.drawLine(37,-3,45,-3); painter.drawLine(37,3,45,3)
+        elif stage == 15:
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(QRectF(-20,-56,40,14))
+            for i in range(7):
+                angle=i*math.pi/6
+                painter.drawLine(QPointF(math.cos(angle)*26,-48-math.sin(angle)*15),QPointF(math.cos(angle)*33,-48-math.sin(angle)*20))
+        elif stage == 16:
+            for sign in (-1,1):
+                for i in range(3):
+                    path=QPainterPath(QPointF(sign*34,15-i*7))
+                    path.lineTo(sign*(54-i*5),-25-i*7); path.lineTo(sign*43,16-i*7); path.closeSubpath(); painter.drawPath(path)
+        elif stage == 17:
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(QRectF(-49,-16,98,30))
+            painter.drawEllipse(QRectF(-40,-25,80,48))
+            painter.setBrush(QColor(color)); painter.drawEllipse(QPointF(48,0),3,3)
+        elif stage == 18:
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(QRectF(-17,17,20,12)); painter.drawEllipse(QRectF(-3,17,20,12))
+            painter.drawEllipse(QRectF(-25,-50,50,10))
+        else:
+            path=QPainterPath(QPointF(-25,-35))
+            for x,y in ((-31,-50),(-16,-44),(-12,-57),(0,-45),(12,-57),(16,-44),(31,-50),(25,-35)):
+                path.lineTo(x,y)
+            path.closeSubpath(); painter.drawPath(path)
+            painter.setBrush(QColor('white'))
+            for x in (-12,0,12): painter.drawEllipse(QPointF(x,-39),2.5,2.5)
         if minor >= 1:
             painter.setPen(Qt.NoPen)
             painter.setBrush(QColor(color))

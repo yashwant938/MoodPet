@@ -35,7 +35,7 @@ def main():
         db=DatabaseManager(Path(temp)/'preview.db')
         populate_demo(db,settings)
         with db._connection() as conn:
-            RewardService.award(conn,'fixture:preview','Fictional preview',RULES.threshold(64))
+            RewardService.award(conn,'fixture:preview','Fictional preview',RULES.threshold(166)+RULES.cost(167)//2-910)
         db.get_evolution_snapshot(claim_unlocks=True)
         dashboard=Dashboard(db,settings,FocusSessionManager())
         dashboard.show(); dashboard.navigate(3)
@@ -48,7 +48,7 @@ def main():
         dashboard.resize(960,640); app.processEvents()
         dashboard.grab().save(str(output/'evolution-small.png'))
         dashboard.evolution_controller.close(); dashboard.close()
-    sheet=QImage(1200,480,QImage.Format_ARGB32)
+    sheet=QImage(1200,((len(STAGES)+4)//5)*240,QImage.Format_ARGB32)
     sheet.fill(QColor('#F5F7F6'))
     painter=QPainter(sheet)
     pet=HumanCharacterWidget(); pet.resize(180,160); pet.set_motion_enabled(False)
