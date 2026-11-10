@@ -10,6 +10,7 @@ import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import QApplication
+from PySide6.QtTest import QTest
 from app.config.settings import SettingsManager
 from app.storage.database import DatabaseManager
 from app.productivity.focus_session import FocusSessionManager
@@ -42,6 +43,10 @@ def main():
         dashboard = Dashboard(db, settings, manager)
         dashboard.show()
         app.processEvents()
+        for _ in range(200):
+            if dashboard.evolution_controller.snapshot is not None:
+                break
+            QTest.qWait(10)
         for index, name in enumerate(("overview", "focus", "history", "journey", "tasks")):
             dashboard.navigate(index)
             app.processEvents()
@@ -71,6 +76,8 @@ def main():
         app.processEvents()
         empty_dashboard.grab().save(str(output / "dashboard-empty.png"))
         empty_dashboard.hide()
+        dashboard.evolution_controller.close()
+        empty_dashboard.evolution_controller.close()
     print("Dashboard previews saved in scratch/")
 
 

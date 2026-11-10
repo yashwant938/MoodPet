@@ -5,6 +5,10 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from threading import RLock
+from app.productivity.rewards import RewardService
+from app.productivity.progression import progress_for
+from app.productivity.streaks import work_days, streak_summary, MONTHLY_REPAIR_TOKENS, REPAIR_WINDOW_DAYS
 
 
 class DatabaseManager:
@@ -14,11 +18,13 @@ class DatabaseManager:
         "productive_seconds", "distracted_seconds", "idle_seconds",
         "focus_sessions_count", "longest_session_seconds",
     )
-    STREAK_PRODUCTIVE_SECONDS = 15 * 60
+    STREAK_PRODUCTIVE_SECONDS = 1
 
     def __init__(self, db_path=None):
         self.db_path = Path(db_path) if db_path is not None else Path.home() / ".moodpet" / "moodpet.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._listeners = set()
+        self._listener_lock = RLock()
         self._init_db()
 
     def _get_connection(self):
@@ -27,13 +33,31 @@ class DatabaseManager:
         return conn
 
     @contextmanager
-    def _connection(self):
+    def _connection(self, notify=True):
         conn = self._get_connection()
+        changed = False
         try:
             with conn:
                 yield conn
+            changed = bool(conn.total_changes)
         finally:
             conn.close()
+        if changed and notify:
+            with self._listener_lock:
+                callbacks = tuple(self._listeners)
+            for callback in callbacks:
+                try:
+                    callback()
+                except RuntimeError:
+                    self.unsubscribe_progress(callback)
+
+    def subscribe_progress(self, callback):
+        with self._listener_lock:
+            self._listeners.add(callback)
+
+    def unsubscribe_progress(self, callback):
+        with self._listener_lock:
+            self._listeners.discard(callback)
 
     def _init_db(self):
         """Upgrade existing installs in place without deleting history."""
@@ -93,6 +117,9 @@ class DatabaseManager:
                 updated TEXT NOT NULL, elapsed INTEGER NOT NULL, total INTEGER NOT NULL,
                 paused INTEGER NOT NULL, note TEXT NOT NULL, task_id INTEGER)""")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_focus_sessions_date ON focus_sessions(date)")
+            conn.execute('''CREATE TABLE IF NOT EXISTS streak_repairs (
+                date TEXT PRIMARY KEY, redeemed_month TEXT NOT NULL, created_at TEXT NOT NULL)''')
+            RewardService.migrate(conn)
 
     @staticmethod
     def _as_date(value=None):
@@ -149,6 +176,8 @@ class DatabaseManager:
                     idle_seconds = idle_seconds + ?
                 WHERE date = ?
             """, (*deltas, today_str))
+            if deltas[0]:
+                RewardService.tracked(conn, deltas[0])
 
     def record_focus_session(self, duration_seconds, completed=True, start_time=None, end_time=None, source="manual", note="", task_id=None):
         """Record one session and its aggregate in a single transaction.
@@ -181,6 +210,7 @@ class DatabaseManager:
                     longest_session_seconds = MAX(longest_session_seconds, ?)
                 WHERE date = ?
             """, (int(bool(completed)), duration, session_date))
+            RewardService.session(conn, cursor.lastrowid)
             return cursor.lastrowid
 
     def get_daily_history(self, days=7, end_date=None):
@@ -199,38 +229,30 @@ class DatabaseManager:
         return result
 
     def get_streaks(self, today=None):
-        """A day qualifies with 15 productive minutes or one completed session.
+        """Any recorded focus work qualifies, including partial timer sessions.
 
         Yesterday's streak remains current until the end of today, giving the
         user the entire day to continue it. Future rows never inflate streaks.
         """
         current_day = self._as_date(today)
         with self._connection() as conn:
-            rows = conn.execute("""
-                SELECT date FROM daily_stats WHERE date <= ?
-                AND (productive_seconds >= ? OR focus_sessions_count > 0)
-                ORDER BY date
-            """, (current_day.isoformat(), self.STREAK_PRODUCTIVE_SECONDS)).fetchall()
-        active_dates = [date.fromisoformat(row["date"]) for row in rows]
-        best = run = 0
-        previous = None
-        for active_day in active_dates:
-            run = run + 1 if previous is not None and active_day - previous == timedelta(days=1) else 1
-            best = max(best, run)
-            previous = active_day
-        current = run if previous in (current_day, current_day - timedelta(days=1)) else 0
-        return {"current_streak": current, "best_streak": best, "active_days": len(active_dates)}
+            worked = work_days(conn,current_day)
+            protected = {date.fromisoformat(row[0]) for row in conn.execute('SELECT date FROM streak_repairs WHERE date<=?',(current_day.isoformat(),))}
+        return streak_summary(worked,protected,current_day)
 
     def get_lifetime_stats(self):
         with self._connection() as conn:
             row = conn.execute("""
                 SELECT COALESCE(SUM(productive_seconds), 0) AS productive_seconds,
+                    (SELECT COALESCE(SUM(duration_seconds),0) FROM focus_sessions WHERE source='manual') AS manual_seconds,
                     COALESCE(SUM(focus_sessions_count), 0) AS completed_sessions,
                     COALESCE(MAX(longest_session_seconds), 0) AS longest_session_seconds,
                     COALESCE(SUM(CASE WHEN productive_seconds >= ? OR focus_sessions_count > 0 THEN 1 ELSE 0 END), 0) AS active_days
                 FROM daily_stats
             """, (self.STREAK_PRODUCTIVE_SECONDS,)).fetchone()
-        return dict(row)
+            result = dict(row)
+            result['active_days'] = len(work_days(conn))
+        return result
 
     def get_recent_sessions(self, limit=8):
         if not isinstance(limit, int) or limit < 1:
@@ -262,6 +284,73 @@ class DatabaseManager:
         with self._connection() as conn:
             return conn.execute("SELECT COALESCE(SUM(duration_seconds), 0) FROM focus_sessions WHERE date = ? AND source = 'manual'", (date.today().isoformat(),)).fetchone()[0]
 
+    def get_focus_history(self, days=7, end_date=None):
+        """Zero-filled saved manual focus time, separate from tracked activity."""
+        if not isinstance(days,int) or days<1:
+            raise ValueError('days must be a positive integer')
+        end=self._as_date(end_date)
+        start=end-timedelta(days=days-1)
+        with self._connection() as conn:
+            values={row[0]:row[1] for row in conn.execute('''SELECT date, SUM(MAX(0,COALESCE(duration_seconds,0)))
+                FROM focus_sessions WHERE source='manual' AND date BETWEEN ? AND ? GROUP BY date''',(start.isoformat(),end.isoformat()))}
+        return [{'date':(start+timedelta(days=i)).isoformat(), 'productive_seconds':values.get((start+timedelta(days=i)).isoformat(),0),
+                 'distracted_seconds':0,'idle_seconds':0} for i in range(days)]
+
+    def get_streak_repair_status(self, today=None):
+        current=self._as_date(today)
+        month=current.strftime('%Y-%m')
+        with self._connection() as conn:
+            used=conn.execute('SELECT COUNT(*) FROM streak_repairs WHERE redeemed_month=?',(month,)).fetchone()[0]
+            repairs={date.fromisoformat(row[0]) for row in conn.execute('SELECT date FROM streak_repairs')}
+            worked=work_days(conn,current)
+        start=max(current-timedelta(days=REPAIR_WINDOW_DAYS),min(worked)) if worked else current
+        eligible=[start+timedelta(days=i) for i in range((current-start).days)
+                  if start+timedelta(days=i) not in worked | repairs]
+        return {'remaining':max(0,MONTHLY_REPAIR_TOKENS-used),'used':used,'month':month,
+                'eligible_dates':list(reversed(eligible)),'repaired_dates':sorted(repairs)}
+
+    def repair_streak_day(self, day, today=None):
+        current=self._as_date(today)
+        target=self._as_date(day)
+        month=current.strftime('%Y-%m')
+        with self._connection() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            worked=work_days(conn,current)
+            if not worked or not max(current-timedelta(days=REPAIR_WINDOW_DAYS),min(worked)) <= target < current:
+                raise ValueError('Choose a missed past day within the last 30 days, after your first recorded work.')
+            if target in worked:
+                raise ValueError('This day already has recorded work; no token is needed.')
+            if conn.execute('SELECT 1 FROM streak_repairs WHERE date=?',(target.isoformat(),)).fetchone():
+                raise ValueError('This day is already protected.')
+            if conn.execute('SELECT COUNT(*) FROM streak_repairs WHERE redeemed_month=?',(month,)).fetchone()[0]>=MONTHLY_REPAIR_TOKENS:
+                raise ValueError('Both free tokens have been used this month. Two new tokens are available next month.')
+            conn.execute('INSERT INTO streak_repairs VALUES (?,?,?)',(target.isoformat(),month,datetime.now().isoformat()))
+            RewardService.sync_achievements(conn)
+
+    def get_previous_week_totals(self, today=None):
+        """Return separate timer and tracked totals for the last complete Mon–Sun week.
+
+        Timer sessions belong to their recorded end date, as elsewhere in the
+        application. All seven days count when calculating a daily average.
+        """
+        current = self._as_date(today)
+        this_monday = current - timedelta(days=current.weekday())
+        start, end = this_monday - timedelta(days=7), this_monday - timedelta(days=1)
+        bounds = (start.isoformat(), end.isoformat())
+        with self._connection() as conn:
+            timer = conn.execute("""SELECT COALESCE(SUM(MAX(0, COALESCE(duration_seconds, 0))), 0)
+                FROM focus_sessions WHERE source = 'manual' AND date BETWEEN ? AND ?""", bounds).fetchone()[0]
+            tracked = conn.execute("""SELECT COALESCE(SUM(MAX(0, COALESCE(productive_seconds, 0))), 0)
+                FROM daily_stats WHERE date BETWEEN ? AND ?""", bounds).fetchone()[0]
+        return {"start": start, "end": end, "timer_seconds": int(timer), "tracked_seconds": int(tracked)}
+
+    def get_task_name(self, task_id):
+        if task_id is None:
+            return None
+        with self._connection() as conn:
+            row = conn.execute("SELECT name FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            return row["name"] if row else None
+
     def create_task(self, name, project="", estimate_seconds=0):
         name, project = name.strip(), project.strip()
         if not name or len(name) > 100 or len(project) > 100:
@@ -280,6 +369,8 @@ class DatabaseManager:
             raise ValueError("Invalid task status.")
         with self._connection() as conn:
             conn.execute("UPDATE tasks SET name = COALESCE(?, name), status = COALESCE(?, status) WHERE id = ?", (name, status, task_id))
+            if status == 'completed':
+                RewardService.task(conn, task_id)
 
     def get_tasks(self):
         with self._connection() as conn:
@@ -317,9 +408,27 @@ class DatabaseManager:
                 ended = self._as_datetime(row['updated'])
                 day = ended.date().isoformat()
                 conn.execute("INSERT OR IGNORE INTO daily_stats(date) VALUES (?)", (day,))
-                conn.execute("""INSERT INTO focus_sessions (date, start_time, end_time, duration_seconds, completed, source, note, task_id)
+                cursor = conn.execute("""INSERT INTO focus_sessions (date, start_time, end_time, duration_seconds, completed, source, note, task_id)
                     VALUES (?, ?, ?, ?, ?, 'manual', ?, ?)""", (day, row['started'], row['updated'], row['elapsed'], int(completed), row['note'], row['task_id']))
                 conn.execute("UPDATE daily_stats SET focus_sessions_count=focus_sessions_count+?, longest_session_seconds=MAX(longest_session_seconds, ?) WHERE date=?",
                     (int(completed), row['elapsed'], day))
+                RewardService.session(conn, cursor.lastrowid)
             conn.execute("DELETE FROM focus_checkpoint WHERE singleton=1")
             return True
+
+    def get_evolution_snapshot(self, claim_unlocks=False):
+        """Read a consistent view; acknowledge transitions before any animation."""
+        with self._connection(notify=False) as conn:
+            conn.execute('BEGIN IMMEDIATE' if claim_unlocks else 'BEGIN')
+            row = conn.execute('SELECT * FROM pet_progress WHERE singleton=1').fetchone()
+            progress = progress_for(int(row['xp']), credit=int(row['curve_credit']))
+            advance = max(0, progress.completed - row['seen_level'])
+            if claim_unlocks and advance:
+                conn.execute('UPDATE pet_progress SET seen_level=? WHERE singleton=1', (progress.completed,))
+            return {
+                'progress': progress, 'advance': advance,
+                'unlocks': tuple(r[0] for r in conn.execute('SELECT level FROM evolution_unlocks ORDER BY level')),
+                'achievements': tuple(r[0] for r in conn.execute('SELECT name FROM earned_achievements ORDER BY earned_at')),
+                'sessions': [dict(r) for r in conn.execute('SELECT id, date, duration_seconds, note FROM focus_sessions WHERE completed=1 ORDER BY end_time DESC, id DESC LIMIT 100')],
+                'rewards': [dict(r) for r in conn.execute("SELECT event_id, kind, xp, created_at FROM reward_events WHERE xp != '0' ORDER BY rowid DESC LIMIT 12")],
+            }
